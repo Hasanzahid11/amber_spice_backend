@@ -1,0 +1,68 @@
+from django.conf import settings
+from django.db import models
+
+
+class Table(models.Model):
+    class Status(models.TextChoices):
+        AVAILABLE = 'available', 'Available'
+        OCCUPIED = 'occupied', 'Occupied'
+        RESERVED = 'reserved', 'Reserved'
+
+    number = models.CharField(max_length=20, unique=True)
+    capacity = models.PositiveIntegerField(default=4)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.AVAILABLE
+    )
+    current_order = models.CharField(max_length=50, blank=True, null=True)
+    guest_name = models.CharField(max_length=120, blank=True, null=True)
+    time_slot = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        ordering = ['number']
+
+    def __str__(self):
+        return f"Table {self.number} ({self.capacity} seats) - {self.get_status_display()}"
+
+
+class Reservation(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        CONFIRMED = 'confirmed', 'Confirmed'
+        CANCELLED = 'cancelled', 'Cancelled'
+        COMPLETED = 'completed', 'Completed'
+
+    table = models.ForeignKey(
+        Table,
+        related_name='reservations',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    customer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name='reservations',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    guest_name = models.CharField(max_length=120)
+    guest_phone = models.CharField(max_length=30)
+    guest_email = models.EmailField(blank=True)
+    guests_count = models.PositiveIntegerField(default=2)
+    reservation_date = models.DateField()
+    time_slot = models.CharField(max_length=50)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.CONFIRMED
+    )
+    special_requests = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['reservation_date', 'time_slot']
+
+    def __str__(self):
+        return f"Reservation for {self.guest_name} on {self.reservation_date} at {self.time_slot}"
