@@ -1,3 +1,4 @@
+import uuid
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from .constants import DEFAULT_ROLE_PERMISSIONS, PERMISSIONS
@@ -40,6 +41,7 @@ class User(AbstractUser):
         CASHIER_FRONT = 'cashier_front', 'Cashier/Front Staff'
         CUSTOMER = 'customer', 'Customer'
 
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     email = models.EmailField(unique=True, help_text='Required. Unique email address.')
     role = models.CharField(
         max_length=30,

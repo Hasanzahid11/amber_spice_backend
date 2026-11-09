@@ -83,6 +83,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'access': str(refresh.access_token),
             'user': {
                 'id': user.id,
+                'uuid': str(user.uuid),
                 'username': user.username,
                 'email': user.email,
                 'fullName': user.get_full_name() or user.username,
@@ -93,6 +94,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'isVip': user.is_vip,
                 'isStaff': user.is_restaurant_staff,
                 'permissions': user.all_permissions,
+                'date_joined': user.date_joined.isoformat() if user.date_joined else None,
             },
         }
 
@@ -105,7 +107,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     Supports password confirmation across various naming conventions:
     password_confirm, confirm_password, and confirmPassword.
     Supports single full name (name or full_name) without requiring last_name.
+    Exposes unique customer uuid.
     """
+    uuid = serializers.UUIDField(read_only=True)
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True, required=False)
     confirm_password = serializers.CharField(write_only=True, required=False)
@@ -116,6 +120,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
+            'id',
+            'uuid',
             'username',
             'email',
             'name',
@@ -128,6 +134,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'confirm_password',
             'confirmPassword',
         ]
+        read_only_fields = ['id', 'uuid']
         extra_kwargs = {
             'username': {'required': False},
             'first_name': {'required': False},
@@ -234,6 +241,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id',
+            'uuid',
             'username',
             'email',
             'first_name',

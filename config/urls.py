@@ -18,6 +18,7 @@ urlpatterns = [
 
     # API v1 Endpoints
     path('api/v1/auth/', include('apps.accounts.urls')),
+    path('api/v1/profiles/', include('apps.profiles.urls')),
     path('api/v1/menu/', include('apps.menu.urls')),
     path('api/v1/orders/', include('apps.orders.urls')),
     path('api/v1/reservations/', include('apps.reservations.urls')),
