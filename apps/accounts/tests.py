@@ -102,10 +102,11 @@ class AuthAndRBACGoldStandardTests(APITestCase):
         self.assertIn('access', res1.data)
         self.assertEqual(res1.data['user']['role'], 'manager')
 
-        # Login via email
-        res2 = self.client.post(url, {'username': 'manager@restaurant.com', 'password': 'password123'})
+        # Login via email field directly (as sent by frontend forms)
+        res2 = self.client.post(url, {'email': 'manager@restaurant.com', 'password': 'password123'}, format='json')
         self.assertEqual(res2.status_code, status.HTTP_200_OK)
         self.assertIn('access', res2.data)
+        self.assertEqual(res2.data['user']['email'], 'manager@restaurant.com')
 
     def test_user_permissions_resolution(self):
         # Kitchen Staff

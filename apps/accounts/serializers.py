@@ -14,12 +14,24 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Gold standard JWT Login Serializer:
     1. Supports logging in with EITHER username OR email.
-    2. Embeds user profile, role, and permission array in the response.
+    2. Accepts payload with key 'email', 'username', or 'username_or_email'.
+    3. Embeds user profile, role, and permission array in the response.
     """
     username_field = 'username'
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Allow username field to be optional so 'email' key can be passed directly
+        if self.username_field in self.fields:
+            self.fields[self.username_field].required = False
+        self.fields['email'] = serializers.CharField(required=False, write_only=True)
+
     def validate(self, attrs):
-        username_or_email = attrs.get('username')
+        username_or_email = (
+            attrs.get('username')
+            or attrs.get('email')
+            or attrs.get('username_or_email')
+        )
         password = attrs.get('password')
 
         if not username_or_email or not password:
@@ -40,7 +52,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.is_active:
             raise serializers.ValidationError('This account has been deactivated.')
 
-        # Generate tokens
+        # Generate tokens using the user's actual username
         data = super().validate({'username': user.username, 'password': password})
 
         # Add rich user details and permissions to response
@@ -63,9 +75,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """
     Public registration serializer for customers.
+    Supports password confirmation across various naming conventions:
+    password_confirm, confirm_password, and confirmPassword.
     """
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
-    password_confirm = serializers.CharField(write_only=True, required=True)
+    password_confirm = serializers.CharField(write_only=True, required=False)
+    confirm_password = serializers.CharField(write_only=True, required=False)
+    confirmPassword = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
@@ -77,15 +93,41 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'phone',
             'password',
             'password_confirm',
+            'confirm_password',
+            'confirmPassword',
         ]
+        extra_kwargs = {
+            'username': {'required': False},
+        }
 
     def validate(self, attrs):
-        if attrs['password'] != attrs['password_confirm']:
-            raise serializers.ValidationError({'password_confirm': "Passwords do not match."})
+        confirm = (
+            attrs.get('password_confirm')
+            or attrs.get('confirm_password')
+            or attrs.get('confirmPassword')
+        )
+        if not confirm:
+            raise serializers.ValidationError({'confirm_password': "Confirm password is required."})
+
+        if attrs['password'] != confirm:
+            raise serializers.ValidationError({'confirm_password': "Passwords do not match."})
+
+        # If username is not provided, generate from email
+        if not attrs.get('username') and attrs.get('email'):
+            base_username = attrs['email'].split('@')[0]
+            candidate = base_username
+            counter = 1
+            while User.objects.filter(username=candidate).exists():
+                candidate = f"{base_username}{counter}"
+                counter += 1
+            attrs['username'] = candidate
+
         return attrs
 
     def create(self, validated_data):
-        validated_data.pop('password_confirm')
+        validated_data.pop('password_confirm', None)
+        validated_data.pop('confirm_password', None)
+        validated_data.pop('confirmPassword', None)
         password = validated_data.pop('password')
         # Public registrations are strictly customers
         user = User.objects.create_user(
