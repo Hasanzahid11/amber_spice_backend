@@ -15,60 +15,87 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     Gold standard JWT Login Serializer:
     1. Supports logging in with EITHER username OR email.
     2. Accepts payload with key 'email', 'username', or 'username_or_email'.
-    3. Embeds user profile, role, and permission array in the response.
+    3. Returns professional error messages on invalid credentials.
+    4. Embeds user profile, role, and permission array in the response.
     """
     username_field = 'username'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Allow username field to be optional so 'email' key can be passed directly
         if self.username_field in self.fields:
             self.fields[self.username_field].required = False
         self.fields['email'] = serializers.CharField(required=False, write_only=True)
 
     def validate(self, attrs):
-        username_or_email = (
+        raw_identifier = (
             attrs.get('username')
             or attrs.get('email')
             or attrs.get('username_or_email')
         )
         password = attrs.get('password')
 
-        if not username_or_email or not password:
-            raise serializers.ValidationError('Both username/email and password are required.')
+        if not raw_identifier or not password:
+            raise serializers.ValidationError({
+                'detail': 'Both email/username and password are required.'
+            })
 
+        identifier = str(raw_identifier).strip()
         user = None
-        # Check if login input is email
-        if '@' in username_or_email:
-            user = User.objects.filter(email__iexact=username_or_email).first()
-            if user:
-                user = authenticate(username=user.username, password=password)
+
+        if '@' in identifier:
+            user_candidate = User.objects.filter(email__iexact=identifier).first()
+            if user_candidate:
+                user = authenticate(
+                    request=self.context.get('request'),
+                    username=user_candidate.username,
+                    password=password,
+                )
         else:
-            user = authenticate(username=username_or_email, password=password)
+            user = authenticate(
+                request=self.context.get('request'),
+                username=identifier,
+                password=password,
+            )
+            if not user:
+                user_candidate = User.objects.filter(email__iexact=identifier).first()
+                if user_candidate:
+                    user = authenticate(
+                        request=self.context.get('request'),
+                        username=user_candidate.username,
+                        password=password,
+                    )
 
         if not user:
-            raise serializers.ValidationError('Invalid login credentials.')
+            raise serializers.ValidationError({
+                'detail': 'Invalid email or password. Please verify your credentials and try again.'
+            })
 
         if not user.is_active:
-            raise serializers.ValidationError('This account has been deactivated.')
+            raise serializers.ValidationError({
+                'detail': 'This account has been deactivated. Please contact support.'
+            })
 
-        # Generate tokens using the user's actual username
-        data = super().validate({'username': user.username, 'password': password})
+        self.user = user
+        refresh = self.get_token(user)
 
-        # Add rich user details and permissions to response
-        data['user'] = {
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'fullName': user.get_full_name() or user.username,
-            'role': user.role,
-            'roleDisplay': user.get_role_display(),
-            'avatar': user.avatar,
-            'phone': user.phone,
-            'isVip': user.is_vip,
-            'isStaff': user.is_restaurant_staff,
-            'permissions': user.all_permissions,
+        data = {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'fullName': user.get_full_name() or user.username,
+                'role': user.role,
+                'roleDisplay': user.get_role_display(),
+                'avatar': user.avatar,
+                'phone': user.phone,
+                'isVip': user.is_vip,
+                'isStaff': user.is_restaurant_staff,
+                'permissions': user.all_permissions,
+            },
         }
+
         return data
 
 
@@ -77,17 +104,22 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     Public registration serializer for customers.
     Supports password confirmation across various naming conventions:
     password_confirm, confirm_password, and confirmPassword.
+    Supports single full name (name or full_name) without requiring last_name.
     """
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True, required=False)
     confirm_password = serializers.CharField(write_only=True, required=False)
     confirmPassword = serializers.CharField(write_only=True, required=False)
+    full_name = serializers.CharField(write_only=True, required=False)
+    name = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
         fields = [
             'username',
             'email',
+            'name',
+            'full_name',
             'first_name',
             'last_name',
             'phone',
@@ -98,6 +130,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {
             'username': {'required': False},
+            'first_name': {'required': False},
+            'last_name': {'required': False},
+            'phone': {'required': False},
         }
 
     def validate(self, attrs):
@@ -111,6 +146,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
         if attrs['password'] != confirm:
             raise serializers.ValidationError({'confirm_password': "Passwords do not match."})
+
+        # Process full name or name if provided
+        incoming_name = attrs.pop('full_name', None) or attrs.pop('name', None)
+        if incoming_name and not attrs.get('first_name'):
+            name_parts = str(incoming_name).strip().split(maxsplit=1)
+            attrs['first_name'] = name_parts[0] if name_parts else ''
+            attrs['last_name'] = name_parts[1] if len(name_parts) > 1 else ''
 
         # If username is not provided, generate from email
         if not attrs.get('username') and attrs.get('email'):
@@ -128,6 +170,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         validated_data.pop('password_confirm', None)
         validated_data.pop('confirm_password', None)
         validated_data.pop('confirmPassword', None)
+        validated_data.pop('full_name', None)
+        validated_data.pop('name', None)
         password = validated_data.pop('password')
         # Public registrations are strictly customers
         user = User.objects.create_user(

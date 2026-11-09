@@ -93,6 +93,28 @@ class AuthAndRBACGoldStandardTests(APITestCase):
         self.assertIn('refresh', response.data)
         self.assertEqual(response.data['user']['role'], 'customer')
 
+    def test_customer_registration_with_single_full_name_and_no_last_name(self):
+        url = reverse('auth_register')
+        payload = {
+            'email': 'singlename@test.com',
+            'full_name': 'Hridoy Developer',
+            'phone': '+353871112222',
+            'password': 'SecurePassword@123',
+            'confirm_password': 'SecurePassword@123',
+        }
+        response = self.client.post(url, payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('access', response.data)
+        self.assertEqual(response.data['user']['fullName'], 'Hridoy Developer')
+
+    def test_login_invalid_credentials_returns_clean_detail(self):
+        url = reverse('auth_login')
+        response = self.client.post(url, {'email': 'invalid@test.com', 'password': 'wrongpassword'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('detail', response.data)
+        detail_msg = response.data['detail'][0] if isinstance(response.data['detail'], list) else response.data['detail']
+        self.assertIn('Invalid email or password', str(detail_msg))
+
     def test_login_with_username_and_email(self):
         url = reverse('auth_login')
 

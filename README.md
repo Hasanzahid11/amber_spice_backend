@@ -146,3 +146,4 @@ Once the server is running, explore the interactive documentation and try out en
 
 ### 📊 Analytics & Reports (`/api/v1/analytics/`)
 - `GET /api/v1/analytics/summary/` - Real-time revenue, orders, tables, and top dishes (Manager & Admin only, Redis cached).
+
