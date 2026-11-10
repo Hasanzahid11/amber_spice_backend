@@ -34,6 +34,7 @@ class RolePermissionConfig(models.Model):
 
 class User(AbstractUser):
     class Role(models.TextChoices):
+        SUPER_ADMIN = 'super_admin', 'Super Admin'
         ADMIN = 'admin', 'Owner/Admin'
         MANAGER = 'manager', 'Manager'
         KITCHEN_STAFF = 'kitchen_staff', 'Kitchen Staff'
@@ -64,8 +65,13 @@ class User(AbstractUser):
         return f"{self.get_full_name() or self.username} ({self.get_role_display()})"
 
     @property
+    def is_super_admin(self) -> bool:
+        """Super Admin has overarching master authority across all admins, staff, branches, and system modules."""
+        return self.is_superuser or self.role == self.Role.SUPER_ADMIN
+
+    @property
     def is_owner_or_admin(self) -> bool:
-        return self.is_superuser or self.role == self.Role.ADMIN
+        return self.is_superuser or self.role in [self.Role.SUPER_ADMIN, self.Role.ADMIN]
 
     @property
     def is_manager(self) -> bool:
@@ -86,12 +92,13 @@ class User(AbstractUser):
     @property
     def is_restaurant_staff(self) -> bool:
         return self.role in [
+            self.Role.SUPER_ADMIN,
             self.Role.ADMIN,
             self.Role.MANAGER,
             self.Role.KITCHEN_STAFF,
             self.Role.DELIVERY_STAFF,
             self.Role.CASHIER_FRONT,
-        ] or self.is_staff
+        ] or self.is_staff or self.is_superuser
 
     def has_restaurant_permission(self, perm_code: str) -> bool:
         """

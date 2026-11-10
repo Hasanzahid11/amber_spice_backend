@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .constants import PERMISSION_CATEGORIES, PERMISSIONS
 from .models import RolePermissionConfig, UserCustomPermission
-from .permissions import CanManageStaff, IsOwnerOrAdmin, IsRestaurantStaff
+from .permissions import CanManageStaff, IsOwnerOrAdmin, IsRestaurantStaff, IsSuperAdmin
 from .serializers import (
     ChangePasswordSerializer,
     CustomerAdminSerializer,
@@ -29,6 +29,84 @@ class CustomLoginView(TokenObtainPairView):
     Accepts username or email + password. Returns JWT tokens and user profile.
     """
     serializer_class = CustomTokenObtainPairSerializer
+
+
+class SuperAdminSetupView(APIView):
+    """
+    POST /api/v1/auth/superadmin/setup/
+    GET  /api/v1/auth/superadmin/setup/
+    Idempotent endpoint to check, initialize, or authenticate the Master Super Admin account.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        super_admin = User.objects.filter(role=User.Role.SUPER_ADMIN).first()
+        return Response({
+            'has_super_admin': super_admin is not None,
+            'default_email': 'superadmin@amberspice.com',
+            'default_username': 'superadmin',
+            'role': 'super_admin',
+            'roleDisplay': 'Super Admin',
+            'description': 'Master Admin Manager with whole-system authority over all modules, staff, and settings.'
+        })
+
+    def post(self, request):
+        username = request.data.get('username', 'superadmin').strip()
+        email = request.data.get('email', 'superadmin@amberspice.com').strip()
+        password = request.data.get('password', 'SuperAdmin@2026!')
+        first_name = request.data.get('first_name', 'Amber Spice')
+        last_name = request.data.get('last_name', 'Super Admin')
+
+        user, created = User.objects.get_or_create(
+            username=username,
+            defaults={
+                'email': email,
+                'first_name': first_name,
+                'last_name': last_name,
+                'role': User.Role.SUPER_ADMIN,
+                'is_staff': True,
+                'is_superuser': True,
+            }
+        )
+        user.email = email
+        user.first_name = first_name
+        user.last_name = last_name
+        user.role = User.Role.SUPER_ADMIN
+        user.is_staff = True
+        user.is_superuser = True
+        user.set_password(password)
+        user.save()
+
+        # Ensure RolePermissionConfig for super_admin exists
+        RolePermissionConfig.objects.get_or_create(
+            role='super_admin',
+            defaults={
+                'name': 'Super Admin (Master Manager)',
+                'description': 'Unrestricted master manager control over all operations, staff, branches, and settings.',
+                'permissions': list(PERMISSIONS.keys()),
+                'is_customizable': False,
+            }
+        )
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'message': 'Super Admin created successfully.' if created else 'Super Admin initialized successfully.',
+            'created': created,
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': {
+                'id': user.id,
+                'uuid': str(user.uuid),
+                'username': user.username,
+                'email': user.email,
+                'fullName': user.get_full_name() or user.username,
+                'role': user.role,
+                'roleDisplay': user.get_role_display(),
+                'isStaff': True,
+                'isSuperAdmin': True,
+                'permissions': user.all_permissions,
+            }
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 class RegisterView(generics.CreateAPIView):
@@ -138,6 +216,7 @@ class StaffViewSet(viewsets.ModelViewSet):
     Accessible by Owner/Admin and Manager.
     """
     queryset = User.objects.filter(role__in=[
+        User.Role.SUPER_ADMIN,
         User.Role.ADMIN,
         User.Role.MANAGER,
         User.Role.KITCHEN_STAFF,

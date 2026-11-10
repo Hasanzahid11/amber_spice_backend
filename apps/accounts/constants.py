@@ -91,6 +91,7 @@ PERMISSION_CATEGORIES = {
 
 # Default role mappings exactly matching Section 18
 DEFAULT_ROLE_PERMISSIONS = {
+    'super_admin': list(PERMISSIONS.keys()),  # Whole Admin Manager - Master Unrestricted Access
     'admin': list(PERMISSIONS.keys()),  # Full access
     'manager': [
         'orders:view',

@@ -26,6 +26,18 @@ class HasRestaurantPermission(permissions.BasePermission):
         return request.user.has_restaurant_permission(perm)
 
 
+class IsSuperAdmin(permissions.BasePermission):
+    """
+    Grants access exclusively to Super Admin (Master Admin Manager) or Django Superuser.
+    """
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.is_super_admin
+        )
+
+
 class IsOwnerOrAdmin(permissions.BasePermission):
     """
     Grants access exclusively to Owner/Admin or Django Superuser.

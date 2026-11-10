@@ -11,6 +11,7 @@ from .views import (
     RegisterView,
     RolePermissionConfigViewSet,
     StaffViewSet,
+    SuperAdminSetupView,
 )
 
 router = DefaultRouter()
@@ -21,6 +22,7 @@ urlpatterns = [
     # Authentication endpoints
     path('register/', RegisterView.as_view(), name='auth_register'),
     path('login/', CustomLoginView.as_view(), name='auth_login'),
+    path('superadmin/setup/', SuperAdminSetupView.as_view(), name='superadmin_setup'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('logout/', LogoutView.as_view(), name='auth_logout'),
 
