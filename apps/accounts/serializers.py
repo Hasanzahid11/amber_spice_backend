@@ -191,9 +191,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 class StaffCreateSerializer(serializers.ModelSerializer):
     """
-    Internal staff creation serializer used by Owner/Admin and Managers.
+    Internal staff creation serializer used by Super Admin, Owner/Admin and Managers.
+    Allows creating any person with any role (Super Admin, Manager, Admin, Kitchen, Delivery, Cashier, Customer).
     """
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
+    name = serializers.CharField(write_only=True, required=False)
+    full_name = serializers.CharField(write_only=True, required=False)
+    shift = serializers.CharField(write_only=True, required=False)
+    assigned_section = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
@@ -202,33 +207,133 @@ class StaffCreateSerializer(serializers.ModelSerializer):
             'email',
             'first_name',
             'last_name',
+            'name',
+            'full_name',
             'phone',
             'role',
             'avatar',
             'password',
+            'shift',
+            'assigned_section',
         ]
+        extra_kwargs = {
+            'username': {'required': False},
+            'first_name': {'required': False},
+            'last_name': {'required': False},
+            'email': {'required': True},
+        }
 
     def validate_role(self, value):
+        role_map = {
+            'super_admin': User.Role.SUPER_ADMIN,
+            'super admin': User.Role.SUPER_ADMIN,
+            'admin': User.Role.ADMIN,
+            'owner': User.Role.ADMIN,
+            'manager': User.Role.MANAGER,
+            'floor manager': User.Role.MANAGER,
+            'general manager': User.Role.MANAGER,
+            'kitchen_staff': User.Role.KITCHEN_STAFF,
+            'kitchen': User.Role.KITCHEN_STAFF,
+            'chef': User.Role.KITCHEN_STAFF,
+            'head chef': User.Role.KITCHEN_STAFF,
+            'delivery_staff': User.Role.DELIVERY_STAFF,
+            'delivery': User.Role.DELIVERY_STAFF,
+            'driver': User.Role.DELIVERY_STAFF,
+            'cashier_front': User.Role.CASHIER_FRONT,
+            'cashier': User.Role.CASHIER_FRONT,
+            'customer': User.Role.CUSTOMER,
+        }
+        normalized = str(value).strip().lower()
+        if normalized in role_map:
+            return role_map[normalized]
+
         valid_staff_roles = [
+            User.Role.SUPER_ADMIN,
+            User.Role.ADMIN,
+            User.Role.MANAGER,
+            User.Role.KITCHEN_STAFF,
+            User.Role.DELIVERY_STAFF,
+            User.Role.CASHIER_FRONT,
+            User.Role.CUSTOMER,
+        ]
+        if value not in valid_staff_roles:
+            raise serializers.ValidationError(
+                f"Role must be one of: {', '.join([r.value for r in valid_staff_roles])}"
+            )
+        return value
+
+    def validate(self, attrs):
+        # Extract full name if passed
+        incoming_name = attrs.pop('full_name', None) or attrs.pop('name', None)
+        if incoming_name and not attrs.get('first_name'):
+            name_parts = str(incoming_name).strip().split(maxsplit=1)
+            attrs['first_name'] = name_parts[0] if name_parts else ''
+            attrs['last_name'] = name_parts[1] if len(name_parts) > 1 else ''
+
+        # Auto-generate username from email if not explicitly provided
+        if not attrs.get('username') and attrs.get('email'):
+            base_username = attrs['email'].split('@')[0].replace('.', '_').replace('+', '_')
+            candidate = base_username
+            counter = 1
+            while User.objects.filter(username=candidate).exists():
+                candidate = f"{base_username}_{counter}"
+                counter += 1
+            attrs['username'] = candidate
+
+        return attrs
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        shift = validated_data.pop('shift', 'Morning (10:00 - 16:00)')
+        assigned_section = validated_data.pop('assigned_section', '')
+
+        role = validated_data.get('role', User.Role.MANAGER)
+        is_staff = role in [
+            User.Role.SUPER_ADMIN,
             User.Role.ADMIN,
             User.Role.MANAGER,
             User.Role.KITCHEN_STAFF,
             User.Role.DELIVERY_STAFF,
             User.Role.CASHIER_FRONT,
         ]
-        if value not in valid_staff_roles:
-            raise serializers.ValidationError("Role must be a valid restaurant staff role.")
-        return value
+        is_superuser = (role == User.Role.SUPER_ADMIN)
 
-    def create(self, validated_data):
-        password = validated_data.pop('password')
-        role = validated_data.get('role', User.Role.CASHIER_FRONT)
-        is_staff = role in [User.Role.ADMIN, User.Role.MANAGER]
         user = User.objects.create_user(
             password=password,
             is_staff=is_staff,
+            is_superuser=is_superuser,
             **validated_data
         )
+
+        # Sync with StaffMember roster if staff role
+        if is_staff:
+            try:
+                from apps.staff.models import StaffMember
+                role_display = (
+                    'Floor Manager' if role == User.Role.MANAGER
+                    else 'Head Chef' if role == User.Role.KITCHEN_STAFF
+                    else 'Host' if role == User.Role.CASHIER_FRONT
+                    else user.get_role_display() or 'Server'
+                )
+                section = assigned_section or (
+                    'Operations & Floor' if role == User.Role.MANAGER
+                    else 'Kitchen Line' if role == User.Role.KITCHEN_STAFF
+                    else 'Front of House'
+                )
+                StaffMember.objects.get_or_create(
+                    user=user,
+                    defaults={
+                        'name': user.get_full_name() or user.username,
+                        'role': role_display,
+                        'shift': shift,
+                        'assigned_section': section,
+                        'phone': user.phone or '',
+                        'status': 'active',
+                    }
+                )
+            except Exception:
+                pass
+
         return user
 
 

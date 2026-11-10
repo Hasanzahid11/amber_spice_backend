@@ -57,3 +57,4 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'Successfully created Super Admin: {username} / {password}'))
         else:
             self.stdout.write(self.style.SUCCESS(f'Successfully updated Super Admin: {username} / {password}'))
+
