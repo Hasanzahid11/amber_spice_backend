@@ -35,8 +35,10 @@ class RolePermissionConfig(models.Model):
 class User(AbstractUser):
     class Role(models.TextChoices):
         SUPER_ADMIN = 'super_admin', 'Super Admin'
+        MANAGER = 'manager', 'Manager (Super Admin)'
         ADMIN = 'admin', 'Owner/Admin'
-        MANAGER = 'manager', 'Manager'
+        STAFF = 'staff', 'Operations Staff'
+        CHEF = 'chef', 'Chef (Kitchen)'
         KITCHEN_STAFF = 'kitchen_staff', 'Kitchen Staff'
         DELIVERY_STAFF = 'delivery_staff', 'Delivery Staff'
         CASHIER_FRONT = 'cashier_front', 'Cashier/Front Staff'
@@ -66,20 +68,28 @@ class User(AbstractUser):
 
     @property
     def is_super_admin(self) -> bool:
-        """Super Admin has overarching master authority across all admins, staff, branches, and system modules."""
-        return self.is_superuser or self.role == self.Role.SUPER_ADMIN
+        """Manager / Super Admin has overarching master authority across all modules, staff, and settings."""
+        return self.is_superuser or self.role in [self.Role.SUPER_ADMIN, self.Role.MANAGER, self.Role.ADMIN]
 
     @property
     def is_owner_or_admin(self) -> bool:
-        return self.is_superuser or self.role in [self.Role.SUPER_ADMIN, self.Role.ADMIN]
+        return self.is_super_admin
 
     @property
     def is_manager(self) -> bool:
-        return self.role == self.Role.MANAGER
+        return self.is_super_admin
+
+    @property
+    def is_chef(self) -> bool:
+        return self.role in [self.Role.CHEF, self.Role.KITCHEN_STAFF]
 
     @property
     def is_kitchen_staff(self) -> bool:
-        return self.role == self.Role.KITCHEN_STAFF
+        return self.is_chef
+
+    @property
+    def is_operations_staff(self) -> bool:
+        return self.role in [self.Role.STAFF, self.Role.CASHIER_FRONT]
 
     @property
     def is_delivery_staff(self) -> bool:
@@ -93,8 +103,10 @@ class User(AbstractUser):
     def is_restaurant_staff(self) -> bool:
         return self.role in [
             self.Role.SUPER_ADMIN,
-            self.Role.ADMIN,
             self.Role.MANAGER,
+            self.Role.ADMIN,
+            self.Role.STAFF,
+            self.Role.CHEF,
             self.Role.KITCHEN_STAFF,
             self.Role.DELIVERY_STAFF,
             self.Role.CASHIER_FRONT,

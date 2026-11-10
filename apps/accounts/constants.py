@@ -91,33 +91,32 @@ PERMISSION_CATEGORIES = {
 
 # Default role mappings exactly matching Section 18
 DEFAULT_ROLE_PERMISSIONS = {
-    'super_admin': list(PERMISSIONS.keys()),  # Whole Admin Manager - Master Unrestricted Access
-    'admin': list(PERMISSIONS.keys()),  # Full access
-    'manager': [
+    'super_admin': list(PERMISSIONS.keys()),  # Manager / Super Admin - Whole Master Access
+    'manager': list(PERMISSIONS.keys()),      # Manager - Full All Access
+    'admin': list(PERMISSIONS.keys()),        # Owner / Admin - Full Access
+    'staff': [
         'orders:view',
         'orders:create',
         'orders:update_status',
-        'orders:cancel',
-        'kitchen:view_orders',
-        'kitchen:update_status',
-        'deliveries:view_assigned',
-        'deliveries:update_status',
         'menu:view',
         'menu:manage',
         'menu:toggle_availability',
         'inventory:view',
         'inventory:manage',
-        'reports:view',
-        'staff:view',
-        'staff:manage',
         'reservations:view',
         'reservations:manage',
-        'customers:view',
+    ],
+    'chef': [
+        'kitchen:view_orders',
+        'kitchen:update_status',
+        'menu:toggle_availability',
+        'inventory:view',
     ],
     'kitchen_staff': [
         'kitchen:view_orders',
         'kitchen:update_status',
         'menu:toggle_availability',
+        'inventory:view',
     ],
     'delivery_staff': [
         'deliveries:view_assigned',

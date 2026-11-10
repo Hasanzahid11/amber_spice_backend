@@ -20,6 +20,15 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     username_field = 'username'
 
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['role'] = user.role
+        token['email'] = user.email
+        token['username'] = user.username
+        token['is_staff'] = user.is_staff
+        return token
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.username_field in self.fields:
