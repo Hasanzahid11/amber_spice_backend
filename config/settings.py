@@ -7,6 +7,8 @@ import os
 from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -121,6 +123,9 @@ CACHES = {
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'IGNORE_EXCEPTIONS': True,  # Gracefully fall back if Redis is temporarily unreachable
+            'SOCKET_CONNECT_TIMEOUT': 0.5,
+            'SOCKET_TIMEOUT': 0.5,
+            'CONNECTION_POOL_KWARGS': {'retry': Retry(NoBackoff(), 0)},
         }
     }
 }

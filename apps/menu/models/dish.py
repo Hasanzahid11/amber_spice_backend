@@ -1,31 +1,7 @@
 from django.db import models
 from django.utils.text import slugify
 
-
-class Category(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    slug = models.SlugField(max_length=120, unique=True, blank=True)
-    image_url = models.URLField(max_length=500, blank=True, null=True)
-    description = models.TextField(blank=True)
-    order = models.PositiveIntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name_plural = 'Categories'
-        ordering = ['order', 'name']
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return self.name
-
-    @property
-    def dish_count(self):
-        return self.dishes.filter(is_available=True).count()
+from .category import Category
 
 
 class Dish(models.Model):
@@ -78,21 +54,3 @@ class Dish(models.Model):
 
     def __str__(self):
         return f"{self.name} (${self.price})"
-
-
-class DishPortionOption(models.Model):
-    dish = models.ForeignKey(Dish, related_name='portion_options', on_delete=models.CASCADE)
-    name = models.CharField(max_length=100)
-    price_delta = models.DecimalField(max_digits=8, decimal_places=2, default=0.00)
-
-    def __str__(self):
-        return f"{self.dish.name} - {self.name} (+${self.price_delta})"
-
-
-class DishExtraOption(models.Model):
-    dish = models.ForeignKey(Dish, related_name='extra_options', on_delete=models.CASCADE)
-    name = models.CharField(max_length=100)
-    price = models.DecimalField(max_digits=8, decimal_places=2, default=0.00)
-
-    def __str__(self):
-        return f"{self.dish.name} - {self.name} (${self.price})"

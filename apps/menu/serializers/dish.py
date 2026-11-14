@@ -1,32 +1,7 @@
 from rest_framework import serializers
-from .models import Category, Dish, DishExtraOption, DishPortionOption
 
-
-class DishPortionOptionSerializer(serializers.ModelSerializer):
-    priceDelta = serializers.DecimalField(
-        source='price_delta',
-        max_digits=8,
-        decimal_places=2
-    )
-
-    class Meta:
-        model = DishPortionOption
-        fields = ['id', 'name', 'priceDelta']
-
-
-class DishExtraOptionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DishExtraOption
-        fields = ['id', 'name', 'price']
-
-
-class CategorySerializer(serializers.ModelSerializer):
-    dishCount = serializers.IntegerField(source='dish_count', read_only=True)
-    imageUrl = serializers.CharField(source='image_url', required=False, allow_blank=True)
-
-    class Meta:
-        model = Category
-        fields = ['id', 'name', 'slug', 'dishCount', 'imageUrl', 'description', 'order', 'is_active']
+from ..models import Dish
+from .options import DishExtraOptionSerializer, DishPortionOptionSerializer
 
 
 class DishSerializer(serializers.ModelSerializer):
@@ -67,4 +42,3 @@ class DishSerializer(serializers.ModelSerializer):
             'extraOptions',
             'created_at',
         ]
-

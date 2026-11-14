@@ -147,3 +147,9 @@ Once the server is running, explore the interactive documentation and try out en
 ### 📊 Analytics & Reports (`/api/v1/analytics/`)
 - `GET /api/v1/analytics/summary/` - Real-time revenue, orders, tables, and top dishes (Manager & Admin only, Redis cached).
 
+## Menu Category API
+
+See [Menu Category API](docs/menu-categories.md) for request/response properties, create/update examples, permissions, search/filter/pagination and archive/restore behavior.
+
+See [Menu app structure](apps/menu/README.md) for the models, serializers, views, services, admin and test folders.
+
