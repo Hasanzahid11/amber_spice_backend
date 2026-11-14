@@ -33,6 +33,7 @@ Archive preserves the category and its dishes. The archived category and its dis
 | `is_active` | boolean | No | Yes | Public visibility; default true |
 | `dishCount` | integer | No | No | Number of related dishes with `is_available=true` |
 | `created_at` | ISO 8601 timestamp | No | No | Server-generated creation timestamp |
+| `addedBy` | `{id, name, role}` or null | No | No | Server-assigned creator, visible to menu managers; null for public reads and historical records without a creator |
 
 Only `name` is required on POST. On PATCH, supply only fields being changed. The spelling/casing above is intentional and retains existing client field names.
 
@@ -149,7 +150,7 @@ PATCH with `{"is_active": false}` hides it. DELETE has the same archive effect. 
 4. Customer dish lookup can use `/api/v1/menu/dishes/?category=7` or `?category__slug=biryani`.
 5. Customer public dish reads exclude archived categories. Menu managers can still inspect their dishes for maintenance/restoration.
 
-The admin category list, creation form and dish category dropdown are integrated. Customer home/mobile/menu categories and dishes also load from the backend, without a mock catalog fallback. Admin dish publishing remains separate integration work; its existing local writes are not a completed API integration.
+The admin category list, creation form and dish category dropdown are integrated. Admin dish creation, editing and availability updates also use the backend; see [Dish API and creator attribution](menu-dishes.md). Customer home/mobile/menu categories and dishes load from the backend, without a mock catalog fallback.
 
 ## Validation and verification
 

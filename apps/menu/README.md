@@ -13,6 +13,8 @@ apps/menu/
 |   |-- category.py          # Category validation and image upload/cleanup
 |   |-- dish.py              # Dish API fields and nested options
 |   |-- options.py           # Portion and extra option representations
+|   |-- images.py            # Shared upload validation and file cleanup
+|   |-- attribution.py       # Read-only creator representation
 |   `-- __init__.py
 |-- views/
 |   |-- category.py          # Category CRUD, visibility, archive and list cache
@@ -28,6 +30,7 @@ apps/menu/
 |-- tests/
 |   |-- test_categories.py   # Category API and related dish/cache behavior
 |   |-- test_category_images.py # Upload validation, persistence and cleanup
+|   |-- test_dishes.py       # Dish CRUD, creators, permissions and public visibility
 |   `-- __init__.py
 |-- migrations/              # Existing database migration history
 |-- management/commands/     # Restaurant seed command

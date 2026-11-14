@@ -24,8 +24,16 @@ class DishAdmin(admin.ModelAdmin):
         'is_bestseller',
         'is_popular',
         'orders_count',
+        'created_by',
     )
     list_filter = ('category', 'station', 'is_available', 'is_bestseller', 'is_popular')
     search_fields = ('name', 'description')
     prepopulated_fields = {'slug': ('name',)}
     inlines = [DishPortionOptionInline, DishExtraOptionInline]
+
+    readonly_fields = ('created_by',)
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)

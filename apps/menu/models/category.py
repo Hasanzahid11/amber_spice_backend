@@ -1,6 +1,7 @@
 from pathlib import Path
 from uuid import uuid4
 
+from django.conf import settings
 from django.db import models
 from django.utils.text import slugify
 
@@ -17,6 +18,8 @@ class Category(models.Model):
     description = models.TextField(blank=True)
     order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, editable=False,
+                                   on_delete=models.SET_NULL, related_name='created_menu_categories')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

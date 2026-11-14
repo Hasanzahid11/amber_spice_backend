@@ -28,7 +28,7 @@ from ..services.cache import CACHE_KEY_CATEGORIES, CACHE_TIMEOUT, invalidate_men
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.annotate(
         available_dish_count=Count('dishes', filter=Q(dishes__is_available=True)),
-    ).order_by('order', 'name', 'pk')
+    ).select_related('created_by').order_by('order', 'name', 'pk')
     serializer_class = CategorySerializer
     filterset_fields = ['is_active', 'slug']
     search_fields = ['name', 'description']
@@ -62,7 +62,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return response
 
     def perform_create(self, serializer):
-        super().perform_create(serializer)
+        serializer.save(created_by=self.request.user)
         invalidate_menu_cache()
 
     def perform_update(self, serializer):
