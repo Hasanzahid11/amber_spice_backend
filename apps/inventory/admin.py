@@ -1,5 +1,13 @@
 from django.contrib import admin
-from .models import InventoryItem
+from .models import InventoryCategory, InventoryItem
+
+
+@admin.register(InventoryCategory)
+class InventoryCategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'is_active', 'created_at', 'updated_at')
+    list_filter = ('is_active',)
+    search_fields = ('name', 'description')
+    prepopulated_fields = {'slug': ('name',)}
 
 
 @admin.register(InventoryItem)
