@@ -22,8 +22,14 @@ class OrderItemCreateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200)
     quantity = serializers.IntegerField(default=1, min_value=1)
     price = serializers.DecimalField(max_digits=10, decimal_places=2)
-    station = serializers.CharField(default='curry')
+    station = serializers.CharField(default='curry', required=False)
     customizations = serializers.JSONField(required=False, default=dict)
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        if 'dishId' in data and 'dish_id' not in data:
+            data['dish_id'] = data.pop('dishId')
+        return super().to_internal_value(data)
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -84,6 +90,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
+            'id',
+            'order_number',
             'customer_name',
             'customer_phone',
             'dining_type',
@@ -98,6 +106,25 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             'estimated_time_minutes',
             'items',
         ]
+        read_only_fields = ['id', 'order_number']
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        mapping = {
+            'customerName': 'customer_name',
+            'customerPhone': 'customer_phone',
+            'diningType': 'dining_type',
+            'tableNumber': 'table_number',
+            'paymentMethod': 'payment_method',
+            'deliveryAddress': 'delivery_address',
+            'deliveryFee': 'delivery_fee',
+            'totalAmount': 'total_amount',
+            'estimatedTimeMinutes': 'estimated_time_minutes',
+        }
+        for camel, snake in mapping.items():
+            if camel in data and snake not in data:
+                data[snake] = data.pop(camel)
+        return super().to_internal_value(data)
 
     def create(self, validated_data):
         items_data = validated_data.pop('items')

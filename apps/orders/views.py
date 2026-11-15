@@ -27,7 +27,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         return OrderSerializer
 
     def get_permissions(self):
-        if self.action == 'create':
+        if self.action in ['create', 'track']:
             return [permissions.AllowAny()]
         if self.action == 'kitchen':
             return [CanAccessKitchenKDS()]
@@ -63,9 +63,30 @@ class OrderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         order = serializer.save()
         try:
-            process_new_order_notification.delay(order.id)
+            process_new_order_notification.apply_async(args=[order.id], retry=False)
         except Exception:
             pass
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        order = serializer.instance
+        read_serializer = OrderSerializer(order)
+        headers = self.get_success_headers(serializer.data)
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @action(detail=False, methods=['get'], url_path=r'track/(?P<order_number>[\w\-]+)', permission_classes=[permissions.AllowAny])
+    def track(self, request, order_number=None):
+        """
+        Public order tracking for guest and authenticated customers by order number or ID.
+        """
+        order = Order.objects.filter(order_number__iexact=order_number).prefetch_related('items').first()
+        if not order and order_number and order_number.isdigit():
+            order = Order.objects.filter(id=int(order_number)).prefetch_related('items').first()
+        if not order:
+            return Response({'error': 'Order not found with the provided order number.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(OrderSerializer(order).data)
 
     @action(detail=False, methods=['get'])
     def kitchen(self, request):
