@@ -32,6 +32,8 @@ class DeliveryWorkflow:
         if job.issue_code:
             cls.event(order, actor, 'issue_resolved', 'Reassigned before pickup.')
         cls.clear_issue(job)
+        from .handover import KitchenHandover
+        KitchenHandover.clear(job)
         job.stage = 'assigned'
         job.accepted_at = None
         job.save()
@@ -53,7 +55,7 @@ class DeliveryWorkflow:
             OrderEvent.objects.create(order=order, status=status)
 
     @classmethod
-    def progress(cls, order, user, action):
+    def progress(cls, order, user, action, verification=None):
         job = cls.job(order)
         stages = {
             'accept': ('assigned', 'accepted', 'accepted_at'),
@@ -76,6 +78,15 @@ class DeliveryWorkflow:
             raise ValidationError({'detail': 'Wait until the kitchen marks this order ready.'})
         if action in ['arrive', 'complete'] and order.status != 'out_for_delivery':
             raise ValidationError({'detail': 'This order is not out for delivery.'})
+        if action in ['pickup', 'complete']:
+            from .handover import KitchenHandover
+            if not verification:
+                raise ValidationError({'detail': 'Use the bag-ticket verification form to confirm this handover.'})
+            KitchenHandover.verify(job, order, delivery=action == 'complete', **verification)
+            if action == 'pickup':
+                job.pickup_verified_at = timezone.now()
+            else:
+                job.delivery_verified_at = timezone.now()
         job.stage = target
         setattr(job, timestamp, timezone.now())
         job.save()
@@ -95,6 +106,8 @@ class DeliveryWorkflow:
             cls.event(order, user, 'issue_resolved', 'Assignment declined before pickup.')
         cls.clear_issue(job)
         job.stage = 'unassigned'
+        from .handover import KitchenHandover
+        KitchenHandover.clear(job)
         job.accepted_at = None
         job.save()
         order.assigned_delivery_staff = None
@@ -165,21 +178,12 @@ class DeliveryWorkflow:
 
     @classmethod
     def sync_operator_status(cls, order, user, status):
-        if order.dining_type != 'delivery' or not order.assigned_delivery_staff_id:
+        if order.dining_type != 'delivery':
             return
-        job = cls.job(order)
-        if job.stage in ['returning', 'returned'] and status in ['out_for_delivery', 'delivered']:
-            raise ValidationError({'detail': 'This delivery has an approved return. Confirm its return to restaurant staff instead.'})
-        if job.issue_code and status in ['out_for_delivery', 'delivered']:
-            raise ValidationError({'detail': 'Resolve the delivery issue before progressing this order.'})
-        transitions = {'out_for_delivery': ('picked_up', 'picked_up_at'), 'delivered': ('delivered', 'delivered_at')}
-        if status in transitions:
-            job.stage, timestamp = transitions[status]
-            if getattr(job, timestamp) is None:
-                setattr(job, timestamp, timezone.now())
-                cls.event(order, user, job.stage, 'Confirmed by restaurant operations.')
-            job.save()
-        elif status == 'cancelled':
+        if status in ['out_for_delivery', 'delivered']:
+            raise ValidationError({'detail': 'Use the assigned rider bag-ticket verification flow for pickup and customer handover.'})
+        if status == 'cancelled' and order.assigned_delivery_staff_id:
+            job = cls.job(order)
             job.stage = 'cancelled'
             cls.clear_issue(job)
             job.save()
@@ -203,7 +207,7 @@ class DeliveryWorkflow:
         if profile and profile.on_duty:
             if job.stage == 'assigned':
                 actions.append('accept')
-            elif job.stage == 'accepted' and order.status == 'ready':
+            elif job.stage == 'accepted' and order.status == 'ready' and job.handed_over_at:
                 actions.append('pickup')
             elif job.stage == 'picked_up':
                 actions.append('arrive')

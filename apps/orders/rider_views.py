@@ -16,7 +16,8 @@ from rest_framework.views import APIView
 
 from apps.engagement.models import RestaurantProfile
 from .delivery_serializers import (RiderSummarySerializer, RiderProfileUpdateSerializer,
-                                   RiderJobSerializer, RiderNoteSerializer, RiderIssueSerializer)
+                                   RiderJobSerializer, RiderNoteSerializer, RiderIssueSerializer, PickupVerificationSerializer, DeliveryVerificationSerializer)
+from .delivery_chat import ConversationSerializer, DeliveryMessageSerializer, MessageCreateSerializer, MessagePageSerializer, conversation, message_page, save_message
 from .delivery_workflow import DeliveryWorkflow
 from .models import Order, RiderProfile
 
@@ -107,9 +108,9 @@ class RiderJobViewSet(viewsets.ReadOnlyModelViewSet):
         order = self.get_queryset().get(pk=order.pk)
         return Response(self.get_serializer(order).data)
 
-    def progress(self, request, pk, action):
+    def progress(self, request, pk, action, verification=None):
         order = self.locked_order(pk)
-        DeliveryWorkflow.progress(order, request.user, action)
+        DeliveryWorkflow.progress(order, request.user, action, verification=verification)
         return self.saved_response(order)
 
     @extend_schema(request=None, responses=RiderJobSerializer, tags=['Rider'], description='JWT assigned rider on duty. Accept assignment. Safe to retry; does not dispatch food.')
@@ -118,11 +119,15 @@ class RiderJobViewSet(viewsets.ReadOnlyModelViewSet):
     def accept(self, request, pk=None):
         return self.progress(request, pk, 'accept')
 
-    @extend_schema(request=None, responses=RiderJobSerializer, tags=['Rider'], description='JWT assigned rider on duty. Requires accepted assignment and ready kitchen status. Records pickup and changes order to out_for_delivery. Safe to retry.')
+    @extend_schema(request=PickupVerificationSerializer, responses=RiderJobSerializer, tags=['Rider'], description='Assigned rider on duty. Kitchen must first record exact-item handover. Required ticket_code from the printed bag ticket and bag_count matching the kitchen. Wrong ticket or bag count fails. Records verified pickup and opens customer/rider contact. Safe identical retry.')
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def pickup(self, request, pk=None):
-        return self.progress(request, pk, 'pickup')
+        order = self.locked_order(pk)
+        serializer = PickupVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        DeliveryWorkflow.progress(order, request.user, 'pickup', serializer.validated_data)
+        return self.saved_response(order)
 
     @extend_schema(request=None, responses=RiderJobSerializer, tags=['Rider'], description='JWT assigned rider on duty. Requires pickup. Records arrival at the delivery address. Safe to retry.')
     @action(detail=True, methods=['post'])
@@ -130,11 +135,15 @@ class RiderJobViewSet(viewsets.ReadOnlyModelViewSet):
     def arrive(self, request, pk=None):
         return self.progress(request, pk, 'arrive')
 
-    @extend_schema(request=None, responses=RiderJobSerializer, tags=['Rider'], description='JWT assigned rider on duty. Requires recorded arrival and no unresolved issue. Confirm actual handover, then cash collection separately. Safe to retry.')
+    @extend_schema(request=DeliveryVerificationSerializer, responses=RiderJobSerializer, tags=['Rider'], description='Assigned rider on duty after recorded arrival. Recheck bag ticket: required ticket_code, bag_count and recipient_confirmed=true after matching customer/address and actual handover. New handovers use the private bag code; pre-upgrade in-transit orders use their original full order number. Cash collection is separate.')
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def complete(self, request, pk=None):
-        return self.progress(request, pk, 'complete')
+        order = self.locked_order(pk)
+        serializer = DeliveryVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        DeliveryWorkflow.progress(order, request.user, 'complete', serializer.validated_data)
+        return self.saved_response(order)
 
     @extend_schema(request=RiderNoteSerializer, responses={204: None}, tags=['Rider'], description='JWT assigned rider. Required note. Before pickup only; returns order to restaurant for reassignment. Does not cancel the order. Reload the queue after success.')
     @action(detail=True, methods=['post'])
@@ -171,3 +180,19 @@ class RiderJobViewSet(viewsets.ReadOnlyModelViewSet):
         order = self.locked_order(pk)
         DeliveryWorkflow.confirm_return(order, request.user)
         return self.saved_response(order)
+
+    @extend_schema(responses=ConversationSerializer, tags=['Delivery contact'], description='Assigned rider JWT. Actual customer/rider conversation availability; contact opens only after verified pickup and closes when delivery/cancellation finishes.')
+    @action(detail=True, methods=['get'])
+    def contact(self, request, pk=None):
+        return Response(ConversationSerializer(conversation(self.get_object(), 'rider')).data)
+
+    @extend_schema(methods=['GET'], parameters=[OpenApiParameter('after_id', int)], responses=MessagePageSerializer, tags=['Delivery contact'])
+    @extend_schema(methods=['POST'], request=MessageCreateSerializer, responses={201: DeliveryMessageSerializer, 200: DeliveryMessageSerializer}, tags=['Delivery contact'], description='Assigned rider JWT with delivery update permission. Required body and UUID client_message_id. Only active deliveries after pickup; identical retries return saved messages without duplicates.')
+    @action(detail=True, methods=['get', 'post'], url_path='contact/messages')
+    @transaction.atomic
+    def contact_messages(self, request, pk=None):
+        order = self.locked_order(pk) if request.method == 'POST' else self.get_object()
+        if request.method == 'GET':
+            return Response(message_page(order, request))
+        message, created = save_message(order, request.user, 'rider', request.data)
+        return Response(DeliveryMessageSerializer(message).data, status=201 if created else 200)

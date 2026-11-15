@@ -49,6 +49,7 @@ class Order(models.Model):
     customer_name = models.CharField(max_length=120)
     customer_phone = models.CharField(max_length=30, blank=True)
     customer_email = models.EmailField(blank=True)
+    customer_chat_token = models.UUIDField(default=uuid.uuid4, editable=False)
     client_request_id = models.UUIDField(null=True, blank=True, unique=True, editable=False)
     request_fingerprint = models.CharField(max_length=64, blank=True, editable=False)
     scheduled_for = models.DateTimeField(null=True, blank=True)
@@ -162,6 +163,14 @@ class DeliveryJob(models.Model):
     cash_collected_at = models.DateTimeField(null=True, blank=True)
     return_requested_at = models.DateTimeField(null=True, blank=True)
     returned_at = models.DateTimeField(null=True, blank=True)
+    handed_over_at = models.DateTimeField(null=True, blank=True)
+    handed_over_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='kitchen_handovers')
+    handover_code = models.CharField(max_length=12, blank=True, editable=False)
+    bag_count = models.PositiveSmallIntegerField(default=0)
+    packed_items = models.JSONField(default=list, blank=True)
+    bags_sealed = models.BooleanField(default=False)
+    pickup_verified_at = models.DateTimeField(null=True, blank=True)
+    delivery_verified_at = models.DateTimeField(null=True, blank=True)
     issue_code = models.CharField(max_length=30, blank=True)
     issue_note = models.CharField(max_length=1000, blank=True)
     issue_reported_at = models.DateTimeField(null=True, blank=True)
@@ -178,3 +187,18 @@ class DeliveryEvent(models.Model):
 
     class Meta:
         ordering = ['created_at', 'id']
+
+
+class DeliveryMessage(models.Model):
+    order = models.ForeignKey(Order, related_name='delivery_messages', on_delete=models.CASCADE)
+    rider = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='delivery_conversations')
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='sent_delivery_messages')
+    sender_role = models.CharField(max_length=10, choices=[('customer', 'Customer'), ('rider', 'Rider')])
+    sender_name = models.CharField(max_length=150)
+    body = models.CharField(max_length=2000)
+    client_message_id = models.UUIDField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        constraints = [models.UniqueConstraint(fields=['order', 'rider', 'sender_role', 'client_message_id'], name='unique_delivery_message_retry')]

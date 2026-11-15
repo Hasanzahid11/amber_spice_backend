@@ -201,9 +201,11 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 
 raw_cors = os.getenv('CORS_ALLOWED_ORIGINS', '')
 if raw_cors:
-    CORS_ALLOWED_ALLOWED_ORIGINS = [origin.strip() for origin in raw_cors.split(',') if origin.strip()]
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in raw_cors.split(',') if origin.strip()]
 
 CORS_ALLOW_CREDENTIALS = True
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = [*default_headers, 'x-order-contact-token']
 
 # ==============================================================================
 # Password validation & Internationalization

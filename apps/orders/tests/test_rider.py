@@ -29,7 +29,22 @@ class RiderWorkspaceTests(APITestCase):
         self.client.force_authenticate(self.rider)
 
     def action(self, action, data=None):
+        if data is None and action in ['pickup', 'complete']:
+            job = DeliveryJob.objects.get(order=self.order)
+            data = {'ticket_code': job.handover_code or self.order.order_number, 'bag_count': job.bag_count or 1}
+            if action == 'complete':
+                data['recipient_confirmed'] = True
         return self.client.post(f'/api/v1/rider/jobs/{self.order.id}/{action}/', data or {}, format='json')
+
+    def release_kitchen(self):
+        client = APIClient()
+        client.force_authenticate(self.manager)
+        response = client.post(f'/api/v1/orders/{self.order.id}/handover/', {
+            'rider_id': self.rider.id, 'bag_count': 1, 'sealed': True,
+            'items': [{'item_id': item.id, 'quantity': item.quantity} for item in self.order.items.all()],
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        return response
 
     def start_shift(self):
         response = self.client.patch('/api/v1/rider/me/', {'on_duty': True, 'vehicle_type': 'motorbike', 'vehicle_registration': 'TEST-PLATE'}, format='json')
@@ -43,6 +58,8 @@ class RiderWorkspaceTests(APITestCase):
         self.assertEqual(self.action('accept').status_code, 400)
         self.start_shift()
         for action, stage in [('accept', 'accepted'), ('pickup', 'picked_up'), ('arrive', 'arrived'), ('complete', 'delivered')]:
+            if action == 'pickup':
+                self.release_kitchen()
             response = self.action(action)
             self.assertEqual(response.status_code, 200, response.data)
             self.assertEqual(response.data['delivery']['stage'], stage)
@@ -83,6 +100,7 @@ class RiderWorkspaceTests(APITestCase):
         self.assertEqual(self.action('pickup').status_code, 400)
         self.order.status = 'ready'
         self.order.save()
+        self.release_kitchen()
         self.assertEqual(self.action('pickup').status_code, 200)
         self.assertEqual(self.action('complete').status_code, 400)
         legacy = self.client.patch(f'/api/v1/orders/{self.order.id}/update_status/', {'status': 'delivered'}, format='json')
@@ -112,6 +130,7 @@ class RiderWorkspaceTests(APITestCase):
         self.assertEqual(resolved.status_code, 200, resolved.data)
         self.assertFalse(resolved.data['hasIssue'])
         self.client.force_authenticate(self.rider)
+        self.release_kitchen()
         self.assertEqual(self.action('pickup').status_code, 200)
 
     def test_decline_keeps_order_and_allows_reassignment_with_audit(self):
@@ -146,6 +165,7 @@ class RiderWorkspaceTests(APITestCase):
     def test_failed_delivery_requires_dispatch_approval_and_recorded_return(self):
         self.start_shift()
         self.action('accept')
+        self.release_kitchen()
         self.action('pickup')
         self.assertEqual(self.action('confirm-return').status_code, 400)
         self.action('report-issue', {'code': 'customer_unavailable', 'note': 'No answer after calling'})
@@ -176,3 +196,16 @@ class RiderWorkspaceTests(APITestCase):
         self.assertIn('requestBody', schema['paths']['/api/v1/rider/me/']['patch'])
         self.assertIn('requestBody', schema['paths']['/api/v1/rider/jobs/{id}/report-issue/']['post'])
         self.assertIn('/api/v1/orders/{id}/delivery/resolve-issue/', schema['paths'])
+        for path in ['/api/v1/orders/{order_id}/handover/', '/api/v1/orders/{order_id}/delivery/contact/',
+                     '/api/v1/orders/{order_id}/delivery/contact/messages/', '/api/v1/orders/track/{order_number}/contact/',
+                     '/api/v1/orders/track/{order_number}/contact/messages/', '/api/v1/rider/jobs/{id}/contact/',
+                     '/api/v1/rider/jobs/{id}/contact/messages/']:
+            self.assertIn(path, schema['paths'])
+        components = schema['components']['schemas']
+        self.assertIn('ticket_code', components['PickupVerificationRequest']['required'])
+        self.assertIn('recipient_confirmed', components['DeliveryVerificationRequest']['required'])
+        self.assertIn('rider_id', components['KitchenHandoverRequest']['required'])
+        self.assertIn('client_message_id', components['MessageCreateRequest']['required'])
+        self.assertIn('customerContactToken', components['CheckoutResponse']['properties'])
+        parameters = schema['paths']['/api/v1/orders/track/{order_number}/contact/']['get']['parameters']
+        self.assertTrue(any(parameter['name'] == 'X-Order-Contact-Token' and parameter['in'] == 'header' for parameter in parameters))

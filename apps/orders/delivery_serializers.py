@@ -14,10 +14,14 @@ class DeliverySummarySerializer(serializers.ModelSerializer):
     returnRequestedAt = serializers.DateTimeField(source='return_requested_at', allow_null=True)
     returnedAt = serializers.DateTimeField(source='returned_at', allow_null=True)
     hasIssue = serializers.SerializerMethodField()
+    kitchenHandoverAt = serializers.DateTimeField(source='handed_over_at', allow_null=True)
+    pickupVerifiedAt = serializers.DateTimeField(source='pickup_verified_at', allow_null=True)
+    deliveryVerifiedAt = serializers.DateTimeField(source='delivery_verified_at', allow_null=True)
+    bagCount = serializers.IntegerField(source='bag_count')
 
     class Meta:
         model = DeliveryJob
-        fields = ['stage', 'acceptedAt', 'pickedUpAt', 'arrivedAt', 'deliveredAt', 'cashCollectedAt', 'returnRequestedAt', 'returnedAt', 'hasIssue']
+        fields = ['stage', 'acceptedAt', 'pickedUpAt', 'arrivedAt', 'deliveredAt', 'cashCollectedAt', 'returnRequestedAt', 'returnedAt', 'hasIssue', 'kitchenHandoverAt', 'pickupVerifiedAt', 'deliveryVerifiedAt', 'bagCount']
 
     def get_hasIssue(self, obj) -> bool:
         return bool(obj.issue_code)
@@ -75,15 +79,25 @@ class RiderJobSerializer(serializers.ModelSerializer):
     delivery = DeliveryProgressSerializer(source='delivery_job', allow_null=True)
     items = RiderItemSerializer(many=True)
     availableActions = serializers.SerializerMethodField()
+    contactAvailable = serializers.SerializerMethodField()
+    ticketReferenceFormat = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = ['id', 'orderNumber', 'customerName', 'customerPhone', 'deliveryAddress', 'deliveryPostalCode',
                   'totalAmount', 'paymentMethod', 'paymentStatus', 'status', 'notes', 'createdAt', 'scheduledFor',
-                  'delivery', 'items', 'availableActions']
+                  'delivery', 'items', 'availableActions', 'contactAvailable', 'ticketReferenceFormat']
 
     def get_availableActions(self, obj) -> list[str]:
         return DeliveryWorkflow.allowed_actions(obj, self.context['request'].user)
+
+    def get_contactAvailable(self, obj) -> bool:
+        from .delivery_chat import contact_available
+        return contact_available(obj)
+
+    def get_ticketReferenceFormat(self, obj) -> str:
+        job = getattr(obj, 'delivery_job', None)
+        return 'code' if job and job.handover_code else 'order_number'
 
 
 class RiderProfileUpdateSerializer(serializers.Serializer):
@@ -123,3 +137,24 @@ class RiderIssueSerializer(RiderNoteSerializer):
         ('customer_unavailable', 'Customer unavailable'), ('address_problem', 'Address problem'),
         ('vehicle_problem', 'Vehicle problem'), ('order_problem', 'Order or packaging problem'), ('other', 'Other'),
     ])
+
+
+class PickupVerificationSerializer(serializers.Serializer):
+    ticket_code = serializers.CharField(max_length=32, min_length=1, trim_whitespace=True)
+    bag_count = serializers.IntegerField(min_value=1, max_value=30)
+
+
+class DeliveryVerificationSerializer(PickupVerificationSerializer):
+    recipient_confirmed = serializers.BooleanField()
+
+
+class PackedItemSerializer(serializers.Serializer):
+    item_id = serializers.IntegerField(min_value=1)
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class KitchenHandoverSerializer(serializers.Serializer):
+    rider_id = serializers.IntegerField(min_value=1)
+    bag_count = serializers.IntegerField(min_value=1, max_value=30)
+    items = PackedItemSerializer(many=True, allow_empty=False, max_length=100)
+    sealed = serializers.BooleanField()

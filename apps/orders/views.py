@@ -18,7 +18,7 @@ from apps.accounts.permissions import CanAccessDeliveries, CanAccessKitchenKDS, 
 from .models import Order, OrderEvent
 from .pricing import price_items, apply_promotion
 from .serializers import (DeliveryStaffSerializer, OrderCreateSerializer, OrderSerializer, OrderQuoteSerializer,
-                          OrderStatusSerializer, DeliveryAssignmentSerializer, CashCollectionSerializer)
+                          OrderStatusSerializer, DeliveryAssignmentSerializer, CashCollectionSerializer, CheckoutResponseSerializer)
 from .tasks import process_new_order_notification
 from .delivery_workflow import DeliveryWorkflow
 from .delivery_serializers import DeliveryProgressSerializer, RiderNoteSerializer
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
-    create=extend_schema(request=OrderCreateSerializer, responses={201: OrderSerializer, 200: OrderSerializer},
+    create=extend_schema(request=OrderCreateSerializer, responses={201: CheckoutResponseSerializer, 200: CheckoutResponseSerializer},
                          description='Guest or JWT customer checkout. Catalog prices and totals are server calculated. Cash only until a payment provider is configured. Reuse client_request_id UUID for safe retries of the identical request.'),
     list=extend_schema(description='JWT required. Customers see only their own orders; delivery staff only their assigned deliveries; operators require orders:view.'),
 )
@@ -96,13 +96,20 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
             process_new_order_notification.apply_async(args=[order.id], retry=False)
         except Exception:
             logger.warning('Order %s saved; notification could not be queued.', order.id)
-        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+        return Response(self.checkout_response(order), status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def checkout_response(order):
+        data = dict(OrderSerializer(order).data)
+        if order.customer_id is None:
+            data['customerContactToken'] = str(order.customer_chat_token)
+        return data
 
     def replay(self, order, fingerprint):
         customer_id = self.request.user.id if self.request.user.is_authenticated else None
         if order.request_fingerprint != fingerprint or order.customer_id != customer_id:
             return Response({'detail': 'This request ID has already been used. Start a new checkout.'}, status=409)
-        return Response(OrderSerializer(order).data)
+        return Response(self.checkout_response(order))
 
     @extend_schema(request=OrderQuoteSerializer, responses=inline_serializer('OrderQuoteResponse', fields={
         'subtotal': serializers.DecimalField(max_digits=10, decimal_places=2),
@@ -152,7 +159,7 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
                           'activeJobs': user.active_jobs} for user in staff])
 
     @extend_schema(request=OrderStatusSerializer, responses=OrderSerializer,
-                   description='JWT and appropriate orders/kitchen/delivery update permission. Enforces pending to preparing to ready to out_for_delivery to delivered. Dispatch requires an assigned active driver. Terminal orders cannot change.')
+                   description='JWT and appropriate orders/kitchen update permission. Kitchen: pending to preparing to ready. Ready takeaway/dine-in orders may be handed over as delivered. Delivery pickup/completion must use the assigned rider ticket-verification endpoints; generic dispatch/completion is blocked. Terminal orders cannot change.')
     @action(detail=True, methods=['patch'])
     @transaction.atomic
     def update_status(self, request, pk=None):

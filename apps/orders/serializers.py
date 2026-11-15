@@ -7,6 +7,7 @@ from .models import Order, OrderItem, OrderEvent
 from apps.menu.models import Dish
 from .pricing import price_items, apply_promotion, checkout_policy
 from .delivery_serializers import DeliverySummarySerializer
+from .delivery_chat import ContactRiderSerializer, contact_available
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -60,6 +61,7 @@ class DeliveryStaffSerializer(serializers.Serializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
+    riderContactAvailable = serializers.SerializerMethodField()
     deliveryProgress = DeliverySummarySerializer(source='delivery_job', read_only=True, allow_null=True)
     items = OrderItemSerializer(many=True, read_only=True)
     orderNumber = serializers.CharField(source='order_number', read_only=True)
@@ -113,15 +115,24 @@ class OrderSerializer(serializers.ModelSerializer):
             'createdAt',
             'items',
             'deliveryProgress',
+            'riderContactAvailable',
         ]
 
-    @extend_schema_field(DeliveryStaffSerializer(allow_null=True))
+    def get_riderContactAvailable(self, obj) -> bool:
+        return contact_available(obj)
+
+    @extend_schema_field(ContactRiderSerializer(allow_null=True))
     def get_assignedDeliveryStaff(self, obj):
         if obj.assigned_delivery_staff:
+            rider = obj.assigned_delivery_staff
+            profile = getattr(rider, 'rider_profile', None)
             return {
-                'id': obj.assigned_delivery_staff.id,
-                'name': obj.assigned_delivery_staff.get_full_name() or obj.assigned_delivery_staff.username,
-                'phone': obj.assigned_delivery_staff.phone,
+                'id': rider.id,
+                'name': rider.get_full_name() or rider.username,
+                'phone': (rider.phone or '') if contact_available(obj) else '',
+                'avatar': rider.avatar or '',
+                'vehicleType': profile.vehicle_type if profile else '',
+                'vehicleRegistration': profile.vehicle_registration if profile else '',
             }
         return None
 
@@ -266,3 +277,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             Dish.objects.filter(pk=item_data['dish'].pk).update(orders_count=F('orders_count') + item_data['quantity'])
         OrderEvent.objects.create(order=order, status=order.status)
         return order
+
+
+class CheckoutResponseSerializer(OrderSerializer):
+    customerContactToken = serializers.UUIDField(required=False, read_only=True, help_text="Guest checkout only: private delivery-chat credential. Keep it in the original browser; never print it on bag tickets or use it in URLs. Linked orders use owner JWT.")
+
+    class Meta(OrderSerializer.Meta):
+        fields = [*OrderSerializer.Meta.fields, 'customerContactToken']
