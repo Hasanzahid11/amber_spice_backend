@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .constants import PERMISSION_CATEGORIES, PERMISSIONS
 from .models import RolePermissionConfig, UserCustomPermission
-from .permissions import CanManageStaff, IsOwnerOrAdmin, IsRestaurantStaff
+from .permissions import CanManageStaff, CanViewCustomers, IsOwnerOrAdmin, IsRestaurantStaff
 from .serializers import (
     ChangePasswordSerializer,
     CustomerAdminSerializer,
@@ -26,7 +26,8 @@ User = get_user_model()
 class CustomLoginView(TokenObtainPairView):
     """
     POST /api/v1/auth/login/
-    Accepts username or email + password. Returns JWT tokens and user profile.
+    Accepts phone number (primary, with Irish number support), email, or username + password.
+    Returns JWT tokens and user profile.
     """
     serializer_class = CustomTokenObtainPairSerializer
 
@@ -112,14 +113,18 @@ class LogoutView(APIView):
 
 class RolePermissionConfigViewSet(viewsets.ModelViewSet):
     """
-    Configurable Role Permissions API.
-    GET /api/v1/auth/roles-config/
-    PATCH /api/v1/auth/roles-config/<id>/
-    Allows Owner/Admin to inspect and configure permissions per role.
+    Configurable Role Permissions API:
+    - Allows Owner/Admin to inspect and configure permissions per role dynamically.
+    - Default configurations are ensured automatically if not yet seeded.
+    - Supports full list, single role lookup, permission updating, and resetting to defaults.
     """
     queryset = RolePermissionConfig.objects.all()
     serializer_class = RolePermissionConfigSerializer
     permission_classes = [IsOwnerOrAdmin]
+
+    def get_queryset(self):
+        RolePermissionConfig.ensure_defaults()
+        return RolePermissionConfig.objects.all()
 
     @action(detail=False, methods=['get'])
     def catalog(self, request):
@@ -130,6 +135,36 @@ class RolePermissionConfigViewSet(viewsets.ModelViewSet):
             'permissions': PERMISSIONS,
             'categories': PERMISSION_CATEGORIES,
         })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsOwnerOrAdmin])
+    def reset(self, request, pk=None):
+        """
+        POST /api/v1/auth/roles-config/<id>/reset/
+        Resets a role's permissions back to the initial system defaults.
+        """
+        config = self.get_object()
+        config.reset_to_default()
+        serializer = self.get_serializer(config)
+        return Response({
+            'message': f"Permissions for role '{config.name}' reset to initial defaults.",
+            'config': serializer.data,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsOwnerOrAdmin])
+    def by_role(self, request):
+        """
+        GET /api/v1/auth/roles-config/by-role/?role=<role_code>
+        Direct lookup of a role configuration by role slug (e.g. kitchen_staff, cashier_front).
+        """
+        role = request.query_params.get('role')
+        if not role:
+            return Response({'error': 'Query parameter "role" is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        RolePermissionConfig.ensure_defaults()
+        config = RolePermissionConfig.objects.filter(role=role).first()
+        if not config:
+            return Response({'error': f'Role "{role}" not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = self.get_serializer(config)
+        return Response(serializer.data)
 
 
 class StaffViewSet(viewsets.ModelViewSet):
@@ -190,9 +225,10 @@ class CustomerListView(generics.ListAPIView):
     """
     GET /api/v1/auth/customers/
     List of registered customers with total orders and spending.
+    Accessible by staff with 'customers:view' permission (Owner/Admin, Manager, Cashier/Front).
     """
     serializer_class = CustomerAdminSerializer
-    permission_classes = [IsRestaurantStaff]
+    permission_classes = [CanViewCustomers]
 
     def get_queryset(self):
         return User.objects.filter(role=User.Role.CUSTOMER).prefetch_related('orders')

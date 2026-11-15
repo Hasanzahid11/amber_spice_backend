@@ -171,3 +171,30 @@ class IsSelfOrAdmin(permissions.BasePermission):
             return False
         return request.user.is_owner_or_admin or obj == request.user
 
+
+class CanViewCustomers(permissions.BasePermission):
+    """
+    Customer directory & VIP details access.
+    Owner/Admin, Manager, Cashier/Front Staff.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        return request.user.has_restaurant_permission('customers:view')
+
+
+class CanAccessCustomerOperations(permissions.BasePermission):
+    """
+    Customer-facing operations (POS orders, reservations, customer directory).
+    Cashier/Front Staff, Manager, Owner/Admin.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        return (
+            request.user.is_owner_or_admin
+            or request.user.has_restaurant_permission('orders:create')
+            or request.user.has_restaurant_permission('reservations:manage')
+            or request.user.has_restaurant_permission('customers:view')
+        )
+

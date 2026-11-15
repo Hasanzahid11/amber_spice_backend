@@ -1,0 +1,31 @@
+[project]
+name = "amber-spice-backend"
+version = "0.1.0"
+description = "Amber Spice Restaurant Backend"
+readme = "README.md"
+authors = [
+    { name = "Hasanzahid10", email = "zahidrangpur6@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "django>=5.0",
+    "djangorestframework>=3.14.0",
+    "djangorestframework-simplejwt>=5.3.0",
+    "django-cors-headers>=4.3.0",
+    "django-filter>=23.5",
+    "drf-spectacular>=0.27.0",
+    "pillow>=10.0.0",
+    "psycopg>=3.1.0",
+    "psycopg-binary>=3.1.0",
+    "python-dotenv>=1.0.0",
+    "django-redis>=5.4.0",
+    "redis>=5.0.0",
+    "celery>=5.3.0",
+]
+
+[project.scripts]
+amber-spice-backend = "amber_spice_backend:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"

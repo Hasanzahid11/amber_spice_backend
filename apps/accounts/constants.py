@@ -89,7 +89,25 @@ PERMISSION_CATEGORIES = {
     ],
 }
 
-# Default role mappings exactly matching Section 18
+# Default role mappings exactly matching Section 18 & Restaurant Access Levels
+ROLE_DISPLAY_NAMES = {
+    'admin': 'Owner/Admin',
+    'manager': 'Manager',
+    'kitchen_staff': 'Kitchen Staff',
+    'delivery_staff': 'Delivery Staff',
+    'cashier_front': 'Cashier/Front Staff',
+    'customer': 'Customer',
+}
+
+ROLE_DESCRIPTIONS = {
+    'admin': 'Full administrative control over all restaurant operations and settings.',
+    'manager': 'Orders, menu, inventory, reports, and staff-related functions.',
+    'kitchen_staff': 'Kitchen orders only on the Kitchen Display System (KDS).',
+    'delivery_staff': 'Assigned deliveries and delivery status.',
+    'cashier_front': 'Orders and customer-facing operations (POS, tables, reservations, customer directory).',
+    'customer': 'Customer ordering, table reservations, and profile management.',
+}
+
 DEFAULT_ROLE_PERMISSIONS = {
     'admin': list(PERMISSIONS.keys()),  # Full access
     'manager': [

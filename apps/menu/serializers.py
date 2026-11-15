@@ -41,6 +41,8 @@ class DishSerializer(serializers.ModelSerializer):
     prepTime = serializers.CharField(source='prep_time', required=False)
     spicyLevel = serializers.IntegerField(source='spicy_level', required=False)
     ordersCount = serializers.IntegerField(source='orders_count', read_only=True)
+    availableIngredients = serializers.JSONField(source='available_ingredients', required=False)
+    availableModifiers = serializers.JSONField(source='available_modifiers', required=False)
 
     class Meta:
         model = Dish
@@ -63,6 +65,8 @@ class DishSerializer(serializers.ModelSerializer):
             'isSpecial',
             'prepTime',
             'dietary',
+            'availableIngredients',
+            'availableModifiers',
             'portionOptions',
             'extraOptions',
             'created_at',

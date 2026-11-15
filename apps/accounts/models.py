@@ -1,6 +1,51 @@
-from django.contrib.auth.models import AbstractUser
+import re
+from django.contrib.auth.models import AbstractUser, UserManager
 from django.db import models
-from .constants import DEFAULT_ROLE_PERMISSIONS, PERMISSIONS
+from .constants import (
+    DEFAULT_ROLE_PERMISSIONS,
+    PERMISSIONS,
+    ROLE_DESCRIPTIONS,
+    ROLE_DISPLAY_NAMES,
+)
+
+
+class CustomUserManager(UserManager):
+    """
+    Custom user manager that handles optional email / primary phone,
+    auto-generates username if not supplied, and normalizes empty strings to None.
+    """
+    def create_user(self, username=None, email=None, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', False)
+        extra_fields.setdefault('is_superuser', False)
+
+        if email == "":
+            email = None
+        if extra_fields.get('phone') == "":
+            extra_fields['phone'] = None
+
+        if not username:
+            phone = extra_fields.get('phone')
+            if phone:
+                base = re.sub(r'[^\w+_-]', '', str(phone))
+            elif email:
+                base = email.split('@')[0]
+            else:
+                base = 'user'
+            username = base
+            counter = 1
+            while self.model.objects.filter(username=username).exists():
+                username = f"{base}_{counter}"
+                counter += 1
+
+        return super().create_user(username=username, email=email, password=password, **extra_fields)
+
+    def create_superuser(self, username, email=None, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('role', 'admin')
+        if email == "":
+            email = None
+        return super().create_superuser(username=username, email=email, password=password, **extra_fields)
 
 
 class RolePermissionConfig(models.Model):
@@ -30,6 +75,29 @@ class RolePermissionConfig(models.Model):
             return config.permissions
         return DEFAULT_ROLE_PERMISSIONS.get(role, [])
 
+    @classmethod
+    def ensure_defaults(cls):
+        """
+        Guarantees that all standard restaurant roles have a database-backed
+        configuration record. If missing, it creates the record with defaults.
+        """
+        for role_key, perms in DEFAULT_ROLE_PERMISSIONS.items():
+            cls.objects.get_or_create(
+                role=role_key,
+                defaults={
+                    'name': ROLE_DISPLAY_NAMES.get(role_key, role_key.replace('_', ' ').title()),
+                    'description': ROLE_DESCRIPTIONS.get(role_key, ''),
+                    'permissions': perms,
+                    'is_customizable': role_key != 'admin',
+                }
+            )
+
+    def reset_to_default(self) -> list[str]:
+        """Resets this role's permissions back to the initial system defaults."""
+        self.permissions = list(DEFAULT_ROLE_PERMISSIONS.get(self.role, []))
+        self.save()
+        return self.permissions
+
 
 class User(AbstractUser):
     class Role(models.TextChoices):
@@ -40,26 +108,56 @@ class User(AbstractUser):
         CASHIER_FRONT = 'cashier_front', 'Cashier/Front Staff'
         CUSTOMER = 'customer', 'Customer'
 
-    email = models.EmailField(unique=True, help_text='Required. Unique email address.')
+    email = models.EmailField(
+        blank=True,
+        null=True,
+        unique=True,
+        help_text='Unique email address (optional if phone is provided).'
+    )
     role = models.CharField(
         max_length=30,
         choices=Role.choices,
         default=Role.CUSTOMER,
         help_text='Designates staff or customer role in the restaurant system.'
     )
-    phone = models.CharField(max_length=30, blank=True, null=True)
+    phone = models.CharField(
+        max_length=30,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text='Primary contact number (optional if email is provided).'
+    )
     avatar = models.URLField(max_length=500, blank=True, null=True)
     is_vip = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    REQUIRED_FIELDS = []
+
+    objects = CustomUserManager()
 
     class Meta:
         ordering = ['-date_joined']
         verbose_name = 'User'
         verbose_name_plural = 'Users'
 
+    def clean(self):
+        super().clean()
+        if self.email == "":
+            self.email = None
+        if self.phone == "":
+            self.phone = None
+
+    def save(self, *args, **kwargs):
+        if self.email == "":
+            self.email = None
+        if self.phone == "":
+            self.phone = None
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.get_full_name() or self.username} ({self.get_role_display()})"
+        display_name = self.get_full_name() or self.username or self.phone or self.email or f"User #{self.id}"
+        return f"{display_name} ({self.get_role_display()})"
 
     @property
     def is_owner_or_admin(self) -> bool:
@@ -80,6 +178,10 @@ class User(AbstractUser):
     @property
     def is_cashier_or_front(self) -> bool:
         return self.role == self.Role.CASHIER_FRONT
+
+    @property
+    def is_customer(self) -> bool:
+        return self.role == self.Role.CUSTOMER
 
     @property
     def is_restaurant_staff(self) -> bool:

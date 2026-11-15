@@ -1,0 +1,156 @@
+import uuid
+from decimal import Decimal
+import django.db.models.deletion
+from django.db import migrations, models
+import apps.restaurant.models
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = []
+
+    operations = [
+        migrations.CreateModel(
+            name='RestaurantProfile',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(default='Amber Spice Restaurant & Takeaway', help_text='Brand name displayed to customers', max_length=200)),
+                ('legal_name', models.CharField(default='Amber Spice Hospitality Ltd.', help_text='Registered legal company entity', max_length=200)),
+                ('tagline', models.CharField(default='Authentic Indian Cuisine & Fine Dining in Dublin', max_length=255)),
+                ('description', models.TextField(default="Welcome to Amber Spice, Dublin's premier destination for authentic Indian cuisine. Our passionate culinary team prepares traditional curries, sizzling tandoori delicacies, and fragrant biryanis using whole roasted spices, fresh Irish meats, and centuries-old culinary craft. Join us for dine-in, order online for delivery, or book our exclusive private dining suite.")),
+                ('short_description', models.CharField(default='Award-winning authentic Indian cuisine, tandoori grills, and curries in Dublin. Dine-in, collection, and delivery available 7 days a week.', max_length=300)),
+                ('logo_url', models.URLField(blank=True, default='https://amberspice.ie/assets/logo.png', help_text='Primary logo image URL')),
+                ('hero_image_url', models.URLField(blank=True, default='https://amberspice.ie/assets/hero-restaurant.jpg', help_text='Hero banner image for website and apps')),
+                ('primary_phone', models.CharField(default='+353 (0)1 234 5678', max_length=30)),
+                ('secondary_phone', models.CharField(blank=True, default='+353 (0)1 234 5679', max_length=30)),
+                ('primary_email', models.EmailField(default='info@amberspice.ie', max_length=254)),
+                ('reservation_email', models.EmailField(default='reservations@amberspice.ie', max_length=254)),
+                ('support_email', models.EmailField(default='support@amberspice.ie', max_length=254)),
+                ('website_url', models.URLField(default='https://amberspice.ie')),
+                ('vat_number', models.CharField(default='IE 9876543A', help_text='VAT / GST registration number', max_length=50)),
+                ('company_registration_number', models.CharField(default='CRO 654321', help_text='Company registration number', max_length=50)),
+                ('currency', models.CharField(default='EUR', max_length=10)),
+                ('currency_symbol', models.CharField(default='€', max_length=5)),
+                ('timezone', models.CharField(default='Europe/Dublin', max_length=50)),
+                ('price_range', models.CharField(default='€€', help_text='Typical price bracket: €, €€, or €€€', max_length=10)),
+                ('cuisines', models.JSONField(blank=True, default=apps.restaurant.models.get_default_cuisines, help_text='List of culinary styles offered')),
+                ('features_and_amenities', models.JSONField(blank=True, default=apps.restaurant.models.get_default_amenities, help_text='Dict of hospitality amenities and certifications')),
+                ('social_media', models.JSONField(blank=True, default=apps.restaurant.models.get_default_socials, help_text='Social media handles and channel URLs')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+            ],
+            options={
+                'verbose_name': 'Restaurant Profile',
+                'verbose_name_plural': 'Restaurant Profile',
+            },
+        ),
+        migrations.CreateModel(
+            name='RestaurantLocation',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('name', models.CharField(default='Amber Spice Dublin City Centre (Flagship)', help_text='Branch name (e.g. Amber Spice Dublin City Centre, Amber Spice Sandyford Hub)', max_length=200)),
+                ('code', models.CharField(default='dublin-central', help_text='Unique branch identifier code (e.g. dublin-central, dublin-south)', max_length=50, unique=True)),
+                ('slug', models.SlugField(default='dublin-city-centre', max_length=100, unique=True)),
+                ('is_primary', models.BooleanField(default=True, help_text='Flagship / primary branch for default public routing')),
+                ('is_active', models.BooleanField(default=True, help_text='Whether this branch is active')),
+                ('address_line_1', models.CharField(default='12 Merrion Row', max_length=255)),
+                ('address_line_2', models.CharField(blank=True, default="St. Stephen's Green", max_length=255)),
+                ('city', models.CharField(default='Dublin', max_length=100)),
+                ('state_or_county', models.CharField(default='Co. Dublin', max_length=100)),
+                ('postal_code', models.CharField(default='D02 X224', help_text='Postal code or Eircode', max_length=20)),
+                ('country', models.CharField(default='IE', max_length=10)),
+                ('latitude', models.DecimalField(decimal_places=6, default=Decimal('53.338200'), help_text='Geographic latitude', max_digits=9)),
+                ('longitude', models.DecimalField(decimal_places=6, default=Decimal('-6.254600'), help_text='Geographic longitude', max_digits=9)),
+                ('phone', models.CharField(default='+353 (0)1 234 5678', max_length=30)),
+                ('email', models.EmailField(default='dublin@amberspice.ie', max_length=254)),
+                ('manager_name', models.CharField(blank=True, default='Rajesh Sharma', max_length=100)),
+                ('allows_dine_in', models.BooleanField(default=True, help_text='Offers table seating & reservations')),
+                ('allows_collection', models.BooleanField(default=True, help_text='Offers customer pickup / takeaway')),
+                ('allows_delivery', models.BooleanField(default=True, help_text='Offers direct hot food delivery')),
+                ('seating_capacity', models.PositiveIntegerField(default=80, help_text='Total seated guest capacity')),
+                ('delivery_radius_km', models.DecimalField(decimal_places=2, default=Decimal('7.50'), help_text='Maximum straight-line delivery radius in kilometers', max_digits=5)),
+                ('min_delivery_order', models.DecimalField(decimal_places=2, default=Decimal('15.00'), help_text='Minimum basket total required for delivery', max_digits=6)),
+                ('delivery_fee_base', models.DecimalField(decimal_places=2, default=Decimal('2.99'), help_text='Standard delivery fee', max_digits=6)),
+                ('free_delivery_threshold', models.DecimalField(decimal_places=2, default=Decimal('40.00'), help_text='Spend threshold for free delivery', max_digits=6)),
+                ('estimated_delivery_time_min', models.PositiveIntegerField(default=30, help_text='Minutes min')),
+                ('estimated_delivery_time_max', models.PositiveIntegerField(default=45, help_text='Minutes max')),
+                ('estimated_pickup_time_min', models.PositiveIntegerField(default=15, help_text='Minutes min for takeaway')),
+                ('estimated_pickup_time_max', models.PositiveIntegerField(default=25, help_text='Minutes max for takeaway')),
+                ('google_place_id', models.CharField(blank=True, default='ChIJrTLr-GyuEmsRBfy61i59si0', help_text='Google Maps Place ID', max_length=150)),
+                ('google_maps_url', models.URLField(blank=True, default='https://maps.google.com/?q=Amber+Spice+Dublin', help_text='Direct link to Google Maps', max_length=500)),
+                ('google_maps_embed_url', models.URLField(blank=True, default='https://www.google.com/maps/embed?pb=amber-spice-dublin', help_text='Google Maps iframe embed URL', max_length=500)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+            ],
+            options={
+                'verbose_name': 'Restaurant Location',
+                'verbose_name_plural': 'Restaurant Locations',
+                'ordering': ['-is_primary', 'name'],
+            },
+        ),
+        migrations.CreateModel(
+            name='SpecialHolidayClosure',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('date', models.DateField(help_text='Calendar date (YYYY-MM-DD)')),
+                ('name', models.CharField(help_text="Holiday or event title (e.g. Christmas Day, St. Patrick's Day, Private Gala)", max_length=150)),
+                ('closure_type', models.CharField(choices=[('closed', 'Full Day Closed'), ('special_hours', 'Adjusted Special Hours')], default='closed', max_length=20)),
+                ('service_type', models.CharField(choices=[('all', 'All Services'), ('dine_in', 'Dine-In'), ('collection', 'Takeaway / Collection'), ('delivery', 'Delivery')], default='all', max_length=20)),
+                ('opens_at', models.TimeField(blank=True, help_text='Opening time if special hours', null=True)),
+                ('closes_at', models.TimeField(blank=True, help_text='Closing time if special hours', null=True)),
+                ('announcement_message', models.CharField(default='We are closed today in observance of the holiday. Normal hours resume tomorrow.', help_text='Customer-facing announcement displayed on banners', max_length=255)),
+                ('is_active', models.BooleanField(default=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('location', models.ForeignKey(blank=True, help_text='Branch location (leave empty if applies to all branches)', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='special_closures', to='restaurant.restaurantlocation')),
+            ],
+            options={
+                'verbose_name': 'Special Holiday Closure',
+                'verbose_name_plural': 'Special Holiday Closures',
+                'ordering': ['date', 'opens_at'],
+            },
+        ),
+        migrations.CreateModel(
+            name='OperatingHour',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('day_of_week', models.IntegerField(choices=[(0, 'Monday'), (1, 'Tuesday'), (2, 'Wednesday'), (3, 'Thursday'), (4, 'Friday'), (5, 'Saturday'), (6, 'Sunday')])),
+                ('service_type', models.CharField(choices=[('all', 'All Services'), ('dine_in', 'Dine-In'), ('collection', 'Takeaway / Collection'), ('delivery', 'Delivery')], default='all', help_text='Service applicable for this schedule', max_length=20)),
+                ('shift_name', models.CharField(default='Standard Service', help_text='e.g. Lunch Service, Dinner Service, All-Day', max_length=50)),
+                ('opens_at', models.TimeField(help_text='Opening time (e.g. 12:00)')),
+                ('closes_at', models.TimeField(help_text='Closing time (e.g. 23:00 or 00:30)')),
+                ('is_closed', models.BooleanField(default=False, help_text='Check if closed for this day/shift')),
+                ('notes', models.CharField(blank=True, help_text='Optional customer notice (e.g. Kitchen closes at 22:30)', max_length=255)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('location', models.ForeignKey(blank=True, help_text='Branch location (leave empty if applies to all branches)', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='operating_hours', to='restaurant.restaurantlocation')),
+            ],
+            options={
+                'verbose_name': 'Operating Hour',
+                'verbose_name_plural': 'Operating Hours',
+                'ordering': ['day_of_week', 'opens_at'],
+            },
+        ),
+        migrations.CreateModel(
+            name='DeliveryZone',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('zone_name', models.CharField(help_text='e.g. Dublin 2 & 4 City Centre Core', max_length=100)),
+                ('postal_prefixes', models.JSONField(default=list, help_text="List of postal prefixes or Eircode routing codes (e.g. ['D02', 'D04', 'D06'])")),
+                ('delivery_fee', models.DecimalField(decimal_places=2, default=Decimal('2.99'), max_digits=6)),
+                ('min_order_amount', models.DecimalField(decimal_places=2, default=Decimal('15.00'), max_digits=6)),
+                ('estimated_delivery_minutes', models.PositiveIntegerField(default=35)),
+                ('is_active', models.BooleanField(default=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('location', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='delivery_zones', to='restaurant.restaurantlocation')),
+            ],
+            options={
+                'verbose_name': 'Delivery Zone',
+                'verbose_name_plural': 'Delivery Zones',
+                'ordering': ['zone_name'],
+            },
+        ),
+    ]

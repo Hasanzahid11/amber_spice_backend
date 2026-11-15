@@ -64,6 +64,16 @@ class Dish(models.Model):
     is_special = models.BooleanField(default=False)
     prep_time = models.CharField(max_length=50, default='15-20 min')
     dietary = models.JSONField(default=list, blank=True)
+    available_ingredients = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of ingredients customers can remove/add (e.g. ['Onions', 'Cilantro', 'Garlic', 'Chili', 'Nuts', 'Dairy'])"
+    )
+    available_modifiers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Modifiers with choices (e.g. {'spice_level': ['Mild', 'Medium', 'Hot', 'Extra Hot'], 'preparation': ['Boneless', 'Bone-in']})"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

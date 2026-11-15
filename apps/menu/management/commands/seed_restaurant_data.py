@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from apps.accounts.constants import DEFAULT_ROLE_PERMISSIONS
 from apps.accounts.models import RolePermissionConfig
-from apps.inventory.models import InventoryItem
+from apps.inventory.models import InventoryItem, Recipe, RecipeIngredient, Supplier
 from apps.menu.models import Category, Dish, DishExtraOption, DishPortionOption
 from apps.orders.models import Order, OrderItem
 from apps.reservations.models import Reservation, Table
@@ -141,6 +141,8 @@ class Command(BaseCommand):
                 'is_popular': True,
                 'description': 'Slow-cooked aromatic basmati rice layered with spiced tender chicken and saffron.',
                 'image_url': 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=800',
+                'available_ingredients': ['Fried Onions', 'Coriander / Mint', 'Cashew Nuts', 'Boiled Egg'],
+                'available_modifiers': {'spice_level': ['Mild', 'Medium', 'Hot', 'Extra Hot']},
             },
             {
                 'category': created_categories['curries-gravies'],
@@ -152,6 +154,8 @@ class Command(BaseCommand):
                 'is_popular': True,
                 'description': 'Tender slow-braised lamb shanks simmered in aromatic Kashmiri spices and yogurt gravy.',
                 'image_url': 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=800',
+                'available_ingredients': ['Ginger Slivers', 'Fresh Coriander', 'Garlic'],
+                'available_modifiers': {'spice_level': ['Medium', 'Hot', 'Very Hot']},
             },
             {
                 'category': created_categories['curries-gravies'],
@@ -162,6 +166,8 @@ class Command(BaseCommand):
                 'is_popular': True,
                 'description': 'Tandoor-charred chicken tikka simmered in a silky tomato, fenugreek, and cream sauce.',
                 'image_url': 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=800',
+                'available_ingredients': ['Fenugreek / Kasoori Methi', 'Butter Cream Swirl', 'Cashew Paste'],
+                'available_modifiers': {'spice_level': ['Mild', 'Medium']},
             },
             {
                 'category': created_categories['tandoori-grill'],
@@ -172,6 +178,8 @@ class Command(BaseCommand):
                 'is_special': True,
                 'description': 'Minced spiced mutton skewered and roasted to perfection in clay tandoor oven.',
                 'image_url': 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?w=800',
+                'available_ingredients': ['Chaat Masala', 'Sliced Onions', 'Mint Chutney'],
+                'available_modifiers': {'preparation': ['Well Done / Charred', 'Standard Juicy']},
             },
             {
                 'category': created_categories['breads-sides'],
@@ -221,16 +229,54 @@ class Command(BaseCommand):
         for tbl in tables:
             Table.objects.get_or_create(number=tbl['number'], defaults=tbl)
 
-        # 6. Inventory Items
+        # 6. Suppliers & Inventory Items
+        supplier_valley, _ = Supplier.objects.get_or_create(name='Valley Farms & Meats', defaults={'contact_name': 'Eamonn Walsh', 'phone': '+3531234567', 'email': 'orders@valleyfarms.ie'})
+        supplier_silk, _ = Supplier.objects.get_or_create(name='Silk Road Spices Ltd', defaults={'contact_name': 'Amir Khan', 'phone': '+3531234568', 'email': 'info@silkroadspices.ie'})
+        supplier_green, _ = Supplier.objects.get_or_create(name='Fresh Green Produce Dublin', defaults={'contact_name': 'Mary Kelly', 'phone': '+3531234569', 'email': 'orders@freshgreen.ie'})
+        supplier_pack, _ = Supplier.objects.get_or_create(name='EcoPack Packaging Ireland', defaults={'contact_name': 'Brian Byrne', 'phone': '+3531234570', 'email': 'sales@ecopack.ie'})
+
         inventory = [
-            {'name': 'Basmati Rice Premium (50kg)', 'category': InventoryItem.Category.PANTRY, 'current_stock': Decimal('120.00'), 'minimum_stock': Decimal('40.00'), 'unit': 'kg', 'supplier': 'Himalayan Mills Ltd'},
-            {'name': 'Free-Range Fresh Chicken', 'category': InventoryItem.Category.MEAT_POULTRY, 'current_stock': Decimal('15.50'), 'minimum_stock': Decimal('25.00'), 'unit': 'kg', 'supplier': 'Valley Farms'},
-            {'name': 'Kashmiri Saffron & Garam Masala', 'category': InventoryItem.Category.SPICES_SEASONING, 'current_stock': Decimal('4.20'), 'minimum_stock': Decimal('2.00'), 'unit': 'kg', 'supplier': 'Silk Road Spices'},
-            {'name': 'Buffalo Paneer & Fresh Curd', 'category': InventoryItem.Category.DAIRY, 'current_stock': Decimal('8.00'), 'minimum_stock': Decimal('15.00'), 'unit': 'kg', 'supplier': 'Pure Dairy Co.'},
-            {'name': 'Brown Onions & Red Tomatoes', 'category': InventoryItem.Category.PRODUCE, 'current_stock': Decimal('65.00'), 'minimum_stock': Decimal('30.00'), 'unit': 'kg', 'supplier': 'Fresh Green Markets'},
+            {'name': 'Basmati Rice Premium (50kg)', 'category': InventoryItem.Category.RICE_GRAINS, 'current_stock': Decimal('120.00'), 'minimum_stock': Decimal('40.00'), 'reorder_level': Decimal('50.00'), 'unit': 'kg', 'purchase_price': Decimal('2.20'), 'supplier': 'Himalayan Mills Ltd'},
+            {'name': 'Free-Range Fresh Chicken', 'category': InventoryItem.Category.MEAT_POULTRY, 'current_stock': Decimal('45.00'), 'minimum_stock': Decimal('15.00'), 'reorder_level': Decimal('20.00'), 'unit': 'kg', 'purchase_price': Decimal('6.50'), 'supplier_ref': supplier_valley},
+            {'name': 'Irish Prime Angus Beef Mince', 'category': InventoryItem.Category.BEEF_LAMB, 'current_stock': Decimal('30.00'), 'minimum_stock': Decimal('10.00'), 'reorder_level': Decimal('15.00'), 'unit': 'kg', 'purchase_price': Decimal('11.50'), 'supplier_ref': supplier_valley},
+            {'name': 'Chakki Atta Whole Wheat Flour', 'category': InventoryItem.Category.FLOUR_BAKERY, 'current_stock': Decimal('80.00'), 'minimum_stock': Decimal('25.00'), 'reorder_level': Decimal('35.00'), 'unit': 'kg', 'purchase_price': Decimal('1.75')},
+            {'name': 'Pure Mustard & Sunflower Oil', 'category': InventoryItem.Category.OILS_FATS, 'current_stock': Decimal('50.00'), 'minimum_stock': Decimal('15.00'), 'reorder_level': Decimal('20.00'), 'unit': 'litre', 'purchase_price': Decimal('3.20')},
+            {'name': 'Brown Onions & Red Tomatoes', 'category': InventoryItem.Category.VEGETABLES, 'current_stock': Decimal('65.00'), 'minimum_stock': Decimal('30.00'), 'reorder_level': Decimal('40.00'), 'unit': 'kg', 'purchase_price': Decimal('1.40'), 'supplier_ref': supplier_green},
+            {'name': 'Signature Biryani Curry Sauce', 'category': InventoryItem.Category.SAUCES, 'current_stock': Decimal('25.00'), 'minimum_stock': Decimal('8.00'), 'reorder_level': Decimal('10.00'), 'unit': 'kg', 'purchase_price': Decimal('4.80')},
+            {'name': 'Kashmiri Saffron & Garam Masala', 'category': InventoryItem.Category.SPICES_SEASONING, 'current_stock': Decimal('10.00'), 'minimum_stock': Decimal('3.00'), 'reorder_level': Decimal('4.00'), 'unit': 'kg', 'purchase_price': Decimal('18.00'), 'supplier_ref': supplier_silk},
+            {'name': 'Buffalo Paneer & Fresh Curd', 'category': InventoryItem.Category.DAIRY, 'current_stock': Decimal('20.00'), 'minimum_stock': Decimal('8.00'), 'reorder_level': Decimal('10.00'), 'unit': 'kg', 'purchase_price': Decimal('7.50')},
+            {'name': 'Mango Lassi & Refreshing Drinks', 'category': InventoryItem.Category.DRINKS, 'current_stock': Decimal('120.00'), 'minimum_stock': Decimal('30.00'), 'reorder_level': Decimal('40.00'), 'unit': 'pieces', 'purchase_price': Decimal('1.20')},
+            {'name': 'Eco Kraft Food Containers & Bags', 'category': InventoryItem.Category.PACKAGING, 'current_stock': Decimal('500.00'), 'minimum_stock': Decimal('100.00'), 'reorder_level': Decimal('150.00'), 'unit': 'pieces', 'purchase_price': Decimal('0.22'), 'supplier_ref': supplier_pack},
         ]
+        created_items = {}
         for inv in inventory:
-            InventoryItem.objects.get_or_create(name=inv['name'], defaults=inv)
+            inv_copy = dict(inv)
+            name = inv_copy.pop('name')
+            obj, _ = InventoryItem.objects.get_or_create(name=name, defaults=inv_copy)
+            created_items[name] = obj
+
+        # Seed Recipe / BOM for first Biryani dish
+        biryani_dish = Dish.objects.filter(category__name='Biryani').first()
+        if biryani_dish:
+            recipe, _ = Recipe.objects.get_or_create(
+                dish=biryani_dish,
+                defaults={
+                    'name': f"Authentic Recipe for {biryani_dish.name}",
+                    'yield_portions': 1,
+                    'instructions': "Marinate chicken in curd and spices, parboil basmati rice, layer with sauce and saffron, seal and dum cook.",
+                    'prep_time_minutes': 25
+                }
+            )
+            chk_item = created_items.get('Free-Range Fresh Chicken')
+            rice_item = created_items.get('Basmati Rice Premium (50kg)')
+            sauce_item = created_items.get('Signature Biryani Curry Sauce')
+
+            if chk_item:
+                RecipeIngredient.objects.get_or_create(recipe=recipe, inventory_item=chk_item, defaults={'quantity': Decimal('200.000'), 'unit': 'g', 'notes': 'Fresh diced'})
+            if rice_item:
+                RecipeIngredient.objects.get_or_create(recipe=recipe, inventory_item=rice_item, defaults={'quantity': Decimal('100.000'), 'unit': 'g', 'notes': 'Aged Basmati'})
+            if sauce_item:
+                RecipeIngredient.objects.get_or_create(recipe=recipe, inventory_item=sauce_item, defaults={'quantity': Decimal('20.000'), 'unit': 'g', 'notes': 'Spiced Biryani gravy'})
 
         # 7. Staff Profile Records
         staff = [
