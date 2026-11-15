@@ -5,7 +5,7 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, inline_serializer
@@ -20,6 +20,8 @@ from .pricing import price_items, apply_promotion
 from .serializers import (DeliveryStaffSerializer, OrderCreateSerializer, OrderSerializer, OrderQuoteSerializer,
                           OrderStatusSerializer, DeliveryAssignmentSerializer, CashCollectionSerializer)
 from .tasks import process_new_order_notification
+from .delivery_workflow import DeliveryWorkflow
+from .delivery_serializers import DeliveryProgressSerializer, RiderNoteSerializer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -31,7 +33,7 @@ logger = logging.getLogger(__name__)
     list=extend_schema(description='JWT required. Customers see only their own orders; delivery staff only their assigned deliveries; operators require orders:view.'),
 )
 class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
-    queryset = Order.objects.prefetch_related('items', 'events').select_related('customer', 'assigned_delivery_staff').all()
+    queryset = Order.objects.prefetch_related('items', 'events').select_related('customer', 'assigned_delivery_staff', 'delivery_job').all()
     filterset_fields = ['status', 'dining_type', 'payment_status', 'table_number']
     search_fields = ['order_number', 'customer_name', 'customer_phone']
     ordering_fields = ['created_at', 'total_amount']
@@ -49,6 +51,10 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
         if self.action == 'deliveries':
             return [CanAccessDeliveries()]
         if self.action in ['assign_delivery', 'delivery_staff']:
+            return [HasRestaurantPermission('orders:update_status')]
+        if self.action == 'delivery_progress':
+            return [HasRestaurantPermission('orders:view')]
+        if self.action in ['resolve_delivery_issue', 'request_delivery_return']:
             return [HasRestaurantPermission('orders:update_status')]
         return [permissions.IsAuthenticated()]
 
@@ -138,8 +144,12 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
     @extend_schema(responses=DeliveryStaffSerializer(many=True), description='JWT with orders:update_status. Active delivery user IDs for assignment.')
     @action(detail=False, methods=['get'], url_path='delivery-staff')
     def delivery_staff(self, request):
-        staff = User.objects.filter(role=User.Role.DELIVERY_STAFF, is_active=True).order_by('first_name', 'id')
-        return Response([{'id': user.id, 'name': user.get_full_name() or user.username, 'phone': user.phone} for user in staff])
+        staff = User.objects.filter(role=User.Role.DELIVERY_STAFF, is_active=True).select_related('rider_profile').annotate(
+            active_jobs=Count('assigned_deliveries', filter=~Q(assigned_deliveries__status__in=['delivered', 'cancelled']) & Q(assigned_deliveries__dining_type='delivery')),
+        ).order_by('first_name', 'id')
+        return Response([{'id': user.id, 'name': user.get_full_name() or user.username, 'phone': user.phone or '',
+                          'onDuty': bool(getattr(user, 'rider_profile', None) and user.rider_profile.on_duty),
+                          'activeJobs': user.active_jobs} for user in staff])
 
     @extend_schema(request=OrderStatusSerializer, responses=OrderSerializer,
                    description='JWT and appropriate orders/kitchen/delivery update permission. Enforces pending to preparing to ready to out_for_delivery to delivered. Dispatch requires an assigned active driver. Terminal orders cannot change.')
@@ -158,6 +168,11 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
             raise PermissionDenied('You cannot update this order status.')
         if new_status == order.status:
             return Response(OrderSerializer(order).data)
+        if user.is_delivery_staff:
+            if not delivery:
+                raise PermissionDenied('Riders can only progress their assigned deliveries.')
+            DeliveryWorkflow.progress(order, user, 'pickup' if new_status == 'out_for_delivery' else 'complete')
+            return Response(OrderSerializer(self.get_queryset().get(pk=order.pk)).data)
         transitions = {'pending': ['preparing', 'cancelled'], 'preparing': ['ready', 'cancelled'],
                        'ready': ['out_for_delivery' if order.dining_type == 'delivery' else 'delivered', 'cancelled'],
                        'out_for_delivery': ['delivered'], 'delivered': [], 'cancelled': []}
@@ -169,6 +184,7 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
             raise ValidationError({'status': 'This order is scheduled for a later time.'})
         if new_status == 'out_for_delivery' and (not order.assigned_delivery_staff or not order.assigned_delivery_staff.is_active):
             raise ValidationError({'status': 'Assign an active delivery staff member before dispatch.'})
+        DeliveryWorkflow.sync_operator_status(order, user, new_status)
         order.status = new_status
         order.save(update_fields=['status', 'updated_at'])
         OrderEvent.objects.create(order=order, status=new_status)
@@ -188,9 +204,8 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
             raise ValidationError({'delivery_staff_id': 'Select an active delivery staff user.'})
         if order.dining_type != 'delivery' or order.status not in ['pending', 'preparing', 'ready']:
             raise ValidationError({'detail': 'Only delivery orders before dispatch can be assigned.'})
-        order.assigned_delivery_staff = staff
-        order.save(update_fields=['assigned_delivery_staff', 'updated_at'])
-        return Response({'message': 'Delivery staff assigned.', 'order': OrderSerializer(order).data})
+        DeliveryWorkflow.assign(order, staff, request.user)
+        return Response({'message': 'Delivery staff assigned.', 'order': OrderSerializer(self.get_queryset().get(pk=order.pk)).data})
 
     @extend_schema(request=CashCollectionSerializer, responses=OrderSerializer,
                    description='JWT with orders:update_status, or assigned delivery user with deliveries:update_status. Records cash collection after handover. Does not charge cards.')
@@ -203,8 +218,40 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
             raise PermissionDenied('You cannot record this payment.')
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        if order.payment_method != 'cash' or order.status != 'delivered' or order.payment_status == 'refunded':
-            raise ValidationError({'detail': 'Record cash only after delivery or collection handover.'})
-        order.payment_status = 'paid'
-        order.save(update_fields=['payment_status', 'updated_at'])
-        return Response(OrderSerializer(order).data)
+        DeliveryWorkflow.record_cash(order, user)
+        return Response(OrderSerializer(self.get_queryset().get(pk=order.pk)).data)
+
+    @extend_schema(responses=DeliveryProgressSerializer, description='JWT with orders:view. Delivery stage, open issue and actor-stamped delivery activity. Internal notes are not exposed through public order tracking.')
+    @action(detail=True, methods=['get'], url_path='delivery')
+    def delivery_progress(self, request, pk=None):
+        order = self.get_object()
+        if order.dining_type != 'delivery':
+            raise ValidationError({'detail': 'This is not a delivery order.'})
+        job = getattr(order, 'delivery_job', None)
+        return Response(DeliveryProgressSerializer(job).data if job else None)
+
+    @extend_schema(request=RiderNoteSerializer, responses=DeliveryProgressSerializer, description='JWT with orders:update_status. Required resolution note. Clears an open delivery issue so the assigned rider can resume. Audit event is saved. A repeated resolution is safe.')
+    @action(detail=True, methods=['post'], url_path='delivery/resolve-issue')
+    @transaction.atomic
+    def resolve_delivery_issue(self, request, pk=None):
+        order = get_object_or_404(self.get_queryset().select_for_update(of=('self',)), pk=pk)
+        if order.dining_type != 'delivery':
+            raise ValidationError({'detail': 'This is not a delivery order.'})
+        serializer = RiderNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        DeliveryWorkflow.resolve_issue(order, request.user, serializer.validated_data['note'])
+        order = self.get_queryset().get(pk=order.pk)
+        return Response(DeliveryProgressSerializer(order.delivery_job).data)
+
+    @extend_schema(request=RiderNoteSerializer, responses=DeliveryProgressSerializer, description='JWT operations with orders:update_status. Required instruction note. Approves return of an in-transit order with a reported issue. Rider must confirm actual return before the order is cancelled. No automatic charge/refund.')
+    @action(detail=True, methods=['post'], url_path='delivery/request-return')
+    @transaction.atomic
+    def request_delivery_return(self, request, pk=None):
+        order = get_object_or_404(self.get_queryset().select_for_update(of=('self',)), pk=pk)
+        if order.dining_type != 'delivery':
+            raise ValidationError({'detail': 'This is not a delivery order.'})
+        serializer = RiderNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        DeliveryWorkflow.request_return(order, request.user, serializer.validated_data['note'])
+        order = self.get_queryset().get(pk=order.pk)
+        return Response(DeliveryProgressSerializer(order.delivery_job).data)

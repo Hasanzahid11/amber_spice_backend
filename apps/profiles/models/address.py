@@ -57,6 +57,12 @@ class UserAddress(models.Model):
 
     class Meta:
         ordering = ['-is_default', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'label'], condition=models.Q(label__in=['home', 'work']),
+                name='unique_home_work_address_per_user',
+            ),
+        ]
         verbose_name = 'Saved Address'
         verbose_name_plural = 'Saved Addresses'
 

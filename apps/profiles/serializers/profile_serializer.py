@@ -1,9 +1,11 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from apps.profiles.models import UserProfile
 from .address_serializer import UserAddressSerializer
 from .preferences_serializer import UserPreferencesSerializer
 
 
+@extend_schema_serializer(component_name='CustomerProfile')
 class UserProfileSerializer(serializers.ModelSerializer):
     uuid = serializers.UUIDField(source='user.uuid', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
@@ -26,6 +28,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     nextTierPoints = serializers.IntegerField(source='next_tier_points', read_only=True)
 
     defaultAddress = serializers.SerializerMethodField()
+    savedAddresses = serializers.SerializerMethodField()
     preferences = serializers.SerializerMethodField()
 
     class Meta:
@@ -59,6 +62,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'preferred_language',
             'emergency_contact',
             'defaultAddress',
+            'savedAddresses',
             'preferences',
             'created_at',
             'updated_at',
@@ -84,15 +88,21 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return obj.user.date_joined.strftime("%B %Y")
         return "Recent Member"
 
+    @extend_schema_field(UserAddressSerializer(allow_null=True))
     def get_defaultAddress(self, obj):
         address = obj.user.saved_addresses.filter(is_default=True).first()
         if address:
             return UserAddressSerializer(address).data
         return None
 
+    @extend_schema_field(UserPreferencesSerializer(allow_null=True))
     def get_preferences(self, obj):
         pref = getattr(obj.user, 'preferences', None)
         if pref:
             return UserPreferencesSerializer(pref).data
         return None
+
+    @extend_schema_field(UserAddressSerializer(many=True))
+    def get_savedAddresses(self, obj):
+        return UserAddressSerializer(obj.user.saved_addresses.all(), many=True).data
 

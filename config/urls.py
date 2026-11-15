@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/v1/profiles/', include('apps.profiles.urls')),
     path('api/v1/menu/', include('apps.menu.urls')),
     path('api/v1/orders/', include('apps.orders.urls')),
+    path('api/v1/rider/', include('apps.orders.rider_urls')),
     path('api/v1/reservations/', include('apps.reservations.urls')),
     path('api/v1/inventory/', include('apps.inventory.urls')),
     path('api/v1/staff/', include('apps.staff.urls')),

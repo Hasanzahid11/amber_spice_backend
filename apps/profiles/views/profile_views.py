@@ -21,7 +21,7 @@ class UserProfileView(APIView):
         serializer = UserProfileSerializer(profile)
         return Response(serializer.data)
 
-    @extend_schema(responses={200: UserProfileSerializer})
+    @extend_schema(request=UserProfileSerializer, responses={200: UserProfileSerializer})
     def patch(self, request):
         profile = ProfileService.update_profile(request.user, request.data)
         serializer = UserProfileSerializer(profile)

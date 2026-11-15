@@ -6,6 +6,7 @@ from django.utils import timezone
 from .models import Order, OrderItem, OrderEvent
 from apps.menu.models import Dish
 from .pricing import price_items, apply_promotion, checkout_policy
+from .delivery_serializers import DeliverySummarySerializer
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -54,9 +55,12 @@ class DeliveryStaffSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     phone = serializers.CharField(allow_blank=True)
+    onDuty = serializers.BooleanField()
+    activeJobs = serializers.IntegerField()
 
 
 class OrderSerializer(serializers.ModelSerializer):
+    deliveryProgress = DeliverySummarySerializer(source='delivery_job', read_only=True, allow_null=True)
     items = OrderItemSerializer(many=True, read_only=True)
     orderNumber = serializers.CharField(source='order_number', read_only=True)
     customerName = serializers.CharField(source='customer_name')
@@ -108,6 +112,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'assignedDeliveryStaff',
             'createdAt',
             'items',
+            'deliveryProgress',
         ]
 
     @extend_schema_field(DeliveryStaffSerializer(allow_null=True))

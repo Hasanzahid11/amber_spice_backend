@@ -125,3 +125,56 @@ class OrderEvent(models.Model):
 
     class Meta:
         ordering = ['created_at', 'id']
+
+
+class RiderProfile(models.Model):
+    class Vehicle(models.TextChoices):
+        BICYCLE = 'bicycle', 'Bicycle'
+        MOTORBIKE = 'motorbike', 'Motorbike'
+        CAR = 'car', 'Car'
+        WALKING = 'walking', 'Walking'
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, related_name='rider_profile', on_delete=models.CASCADE)
+    on_duty = models.BooleanField(default=False)
+    vehicle_type = models.CharField(max_length=20, choices=Vehicle.choices, default=Vehicle.BICYCLE)
+    vehicle_registration = models.CharField(max_length=30, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class DeliveryJob(models.Model):
+    class Stage(models.TextChoices):
+        UNASSIGNED = 'unassigned', 'Awaiting assignment'
+        ASSIGNED = 'assigned', 'Assigned'
+        ACCEPTED = 'accepted', 'Accepted'
+        PICKED_UP = 'picked_up', 'Picked up'
+        ARRIVED = 'arrived', 'Arrived'
+        RETURNING = 'returning', 'Returning to restaurant'
+        RETURNED = 'returned', 'Returned to restaurant'
+        DELIVERED = 'delivered', 'Delivered'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    order = models.OneToOneField(Order, related_name='delivery_job', on_delete=models.CASCADE)
+    stage = models.CharField(max_length=20, choices=Stage.choices, default=Stage.UNASSIGNED)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    picked_up_at = models.DateTimeField(null=True, blank=True)
+    arrived_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    cash_collected_at = models.DateTimeField(null=True, blank=True)
+    return_requested_at = models.DateTimeField(null=True, blank=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+    issue_code = models.CharField(max_length=30, blank=True)
+    issue_note = models.CharField(max_length=1000, blank=True)
+    issue_reported_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class DeliveryEvent(models.Model):
+    order = models.ForeignKey(Order, related_name='delivery_events', on_delete=models.CASCADE)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=30)
+    note = models.CharField(max_length=1200, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
