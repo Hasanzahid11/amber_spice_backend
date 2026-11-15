@@ -215,14 +215,7 @@ class StaffViewSet(viewsets.ModelViewSet):
     Staff management viewset.
     Accessible by Owner/Admin and Manager.
     """
-    queryset = User.objects.filter(role__in=[
-        User.Role.SUPER_ADMIN,
-        User.Role.ADMIN,
-        User.Role.MANAGER,
-        User.Role.KITCHEN_STAFF,
-        User.Role.DELIVERY_STAFF,
-        User.Role.CASHIER_FRONT,
-    ])
+    queryset = User.objects.exclude(role=User.Role.CUSTOMER)
     permission_classes = [CanManageStaff]
     filterset_fields = ['role', 'is_active']
     search_fields = ['username', 'first_name', 'last_name', 'email', 'phone']

@@ -4,6 +4,9 @@ from django.utils import timezone
 from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework import serializers
+from drf_spectacular.utils import extend_schema, inline_serializer
+from datetime import timedelta
 
 from apps.accounts.permissions import CanViewReports
 from apps.inventory.models import InventoryItem
@@ -18,11 +21,14 @@ CACHE_TIMEOUT = 60 * 5  # 5 minutes
 class AnalyticsSummaryView(APIView):
     permission_classes = [CanViewReports]
 
+    @extend_schema(responses=inline_serializer('AnalyticsSummary', fields={
+        'totalRevenue': serializers.FloatField(), 'todayRevenue': serializers.FloatField(),
+        'totalOrders': serializers.IntegerField(), 'todayOrders': serializers.IntegerField(),
+        'activeKitchenOrders': serializers.IntegerField(), 'tables': serializers.DictField(),
+        'lowStockAlerts': serializers.IntegerField(), 'topDishes': serializers.ListField(child=serializers.DictField()),
+        'dailySales': serializers.ListField(child=serializers.DictField()), 'timestamp': serializers.DateTimeField(),
+    }))
     def get(self, request):
-        cached_summary = cache.get(CACHE_KEY_ANALYTICS_SUMMARY)
-        if cached_summary is not None:
-            return Response(cached_summary)
-
         today = timezone.now().date()
         orders_today = Order.objects.filter(created_at__date=today)
 
@@ -73,7 +79,11 @@ class AnalyticsSummaryView(APIView):
             'lowStockAlerts': low_stock_count,
             'topDishes': top_dishes,
             'timestamp': timezone.now().isoformat(),
+            'dailySales': [],
         }
-
-        cache.set(CACHE_KEY_ANALYTICS_SUMMARY, data, CACHE_TIMEOUT)
+        for offset in range(6, -1, -1):
+            day = today - timedelta(days=offset)
+            daily = Order.objects.filter(created_at__date=day)
+            revenue = daily.filter(payment_status='paid').aggregate(total=Sum('total_amount'))['total'] or 0
+            data['dailySales'].append({'date': day.isoformat(), 'orders': daily.count(), 'revenue': str(revenue)})
         return Response(data)

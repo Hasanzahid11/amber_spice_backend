@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     # Third-party packages
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
     'drf_spectacular',
@@ -54,6 +55,7 @@ INSTALLED_APPS = [
     'apps.inventory',
     'apps.staff',
     'apps.analytics',
+    'apps.engagement',
 ]
 
 MIDDLEWARE = [
@@ -139,6 +141,20 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+
+# Restaurant checkout policy. Catalog prices include VAT.
+ORDER_DELIVERY_FEE = os.getenv('ORDER_DELIVERY_FEE', '2.00')
+ORDER_FREE_DELIVERY_THRESHOLD = os.getenv('ORDER_FREE_DELIVERY_THRESHOLD', '30.00')
+ORDER_INCLUDED_VAT_RATE = os.getenv('ORDER_INCLUDED_VAT_RATE', '0.135')
+
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', '')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@localhost')
 
 # ==============================================================================
 # Django REST Framework & JWT Configuration

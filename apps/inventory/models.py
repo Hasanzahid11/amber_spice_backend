@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.db import models
+from django.conf import settings
 
 
 class InventoryCategory(models.Model):
@@ -82,3 +83,26 @@ class InventoryItem(models.Model):
         elif self.current_stock <= self.minimum_stock:
             return self.Status.LOW
         return self.Status.OPTIMAL
+
+
+class StockAlert(models.Model):
+    item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT)
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    stock_remaining_percent = models.PositiveSmallIntegerField()
+    note = models.TextField(blank=True)
+    resolved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class WastageRecord(models.Model):
+    item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.CharField(max_length=200)
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']

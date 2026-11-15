@@ -48,6 +48,10 @@ class Order(models.Model):
     )
     customer_name = models.CharField(max_length=120)
     customer_phone = models.CharField(max_length=30, blank=True)
+    customer_email = models.EmailField(blank=True)
+    client_request_id = models.UUIDField(null=True, blank=True, unique=True, editable=False)
+    request_fingerprint = models.CharField(max_length=64, blank=True, editable=False)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
     dining_type = models.CharField(
         max_length=20,
         choices=DiningType.choices,
@@ -73,7 +77,10 @@ class Order(models.Model):
     tax = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    coupon_code = models.CharField(max_length=40, blank=True)
     delivery_address = models.TextField(blank=True)
+    delivery_postal_code = models.CharField(max_length=20, blank=True)
     notes = models.TextField(blank=True)
     estimated_time_minutes = models.PositiveIntegerField(default=25)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -85,7 +92,7 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         if not self.order_number:
             date_str = timezone.now().strftime('%Y%m%d')
-            unique_suffix = uuid.uuid4().hex[:5].upper()
+            unique_suffix = uuid.uuid4().hex[:18].upper()
             self.order_number = f"ORD-{date_str}-{unique_suffix}"
         super().save(*args, **kwargs)
 
@@ -109,3 +116,12 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity}x {self.name} (${self.price * self.quantity})"
+
+
+class OrderEvent(models.Model):
+    order = models.ForeignKey(Order, related_name='events', on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=Order.Status.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']

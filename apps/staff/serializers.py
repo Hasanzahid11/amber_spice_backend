@@ -9,6 +9,7 @@ class StaffMemberSerializer(serializers.ModelSerializer):
         model = StaffMember
         fields = [
             'id',
+            'user',
             'name',
             'role',
             'shift',

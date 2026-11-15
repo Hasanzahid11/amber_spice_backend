@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+import uuid
 
 
 class Table(models.Model):
@@ -60,9 +61,16 @@ class Reservation(models.Model):
     )
     special_requests = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    booking_reference = models.CharField(max_length=32, unique=True, null=True, blank=True, editable=False)
 
     class Meta:
         ordering = ['reservation_date', 'time_slot']
+        constraints = [models.UniqueConstraint(fields=['table', 'reservation_date', 'time_slot'], condition=models.Q(status__in=['pending', 'confirmed']), name='one_active_table_booking_per_slot')]
+
+    def save(self, *args, **kwargs):
+        if not self.booking_reference:
+            self.booking_reference = uuid.uuid4().hex
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Reservation for {self.guest_name} on {self.reservation_date} at {self.time_slot}"

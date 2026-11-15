@@ -1,6 +1,7 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.db.models import Sum
+from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -208,6 +209,7 @@ class StaffCreateSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(write_only=True, required=False)
     shift = serializers.CharField(write_only=True, required=False)
     assigned_section = serializers.CharField(write_only=True, required=False)
+    role = serializers.CharField()
 
     class Meta:
         model = User
@@ -255,6 +257,8 @@ class StaffCreateSerializer(serializers.ModelSerializer):
         normalized = str(value).strip().lower()
         if normalized in role_map:
             return role_map[normalized]
+        if RolePermissionConfig.objects.filter(role=normalized).exists():
+            return normalized
 
         valid_staff_roles = [
             User.Role.SUPER_ADMIN,
@@ -291,20 +295,14 @@ class StaffCreateSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
         password = validated_data.pop('password')
         shift = validated_data.pop('shift', 'Morning (10:00 - 16:00)')
         assigned_section = validated_data.pop('assigned_section', '')
 
         role = validated_data.get('role', User.Role.MANAGER)
-        is_staff = role in [
-            User.Role.SUPER_ADMIN,
-            User.Role.ADMIN,
-            User.Role.MANAGER,
-            User.Role.KITCHEN_STAFF,
-            User.Role.DELIVERY_STAFF,
-            User.Role.CASHIER_FRONT,
-        ]
+        is_staff = role != User.Role.CUSTOMER
         is_superuser = (role == User.Role.SUPER_ADMIN)
 
         user = User.objects.create_user(
@@ -388,6 +386,7 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class RolePermissionConfigSerializer(serializers.ModelSerializer):
+    permissions = serializers.ListField(child=serializers.ChoiceField(choices=list(PERMISSIONS)))
     availablePermissions = serializers.SerializerMethodField()
     categories = serializers.SerializerMethodField()
 
@@ -404,7 +403,12 @@ class RolePermissionConfigSerializer(serializers.ModelSerializer):
             'categories',
             'updated_at',
         ]
-        read_only_fields = ['id', 'role', 'name', 'is_customizable', 'availablePermissions', 'categories', 'updated_at']
+        read_only_fields = ['id', 'is_customizable', 'availablePermissions', 'categories', 'updated_at']
+
+    def validate(self, attrs):
+        if self.instance and not self.instance.is_customizable and 'permissions' in attrs:
+            raise serializers.ValidationError({'permissions': 'Owner permissions are fixed.'})
+        return attrs
 
     def get_availablePermissions(self, obj):
         return PERMISSIONS

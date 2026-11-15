@@ -158,6 +158,8 @@ Once the server is running, explore the interactive documentation and try out en
 
 ## Menu Category API
 
+The connected customer/admin delivery workflow, request properties, role restrictions and remaining integrations are documented in [Delivery pipeline](../docs/delivery-pipeline.md). Apply the orders migrations before using quote, checkout, assignment, tracking and cash collection.
+
 See [Menu Category API](docs/menu-categories.md) for request/response properties, create/update examples, permissions, search/filter/pagination and archive/restore behavior.
 
 See [Menu app structure](apps/menu/README.md) for the models, serializers, views, services, admin and test folders.

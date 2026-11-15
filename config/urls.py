@@ -25,6 +25,7 @@ urlpatterns = [
     path('api/v1/inventory/', include('apps.inventory.urls')),
     path('api/v1/staff/', include('apps.staff.urls')),
     path('api/v1/analytics/', include('apps.analytics.urls')),
+    path('api/v1/', include('apps.engagement.urls')),
 ]
 
 if settings.DEBUG:

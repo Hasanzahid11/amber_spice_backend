@@ -44,11 +44,11 @@ class OrderAPITests(APITestCase):
             'customerPhone': '+353 87 123 4567',
             'diningType': 'delivery',
             'deliveryAddress': '12 Grafton Street, Dublin 2',
-            'paymentMethod': 'card',
+            'paymentMethod': 'cash',
             'subtotal': '16.50',
             'tax': '1.50',
             'deliveryFee': '2.50',
-            'totalAmount': '20.50',
+            'totalAmount': '18.50',
             'items': [
                 {
                     'dishId': self.dish.id,

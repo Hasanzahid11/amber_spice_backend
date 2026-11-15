@@ -174,3 +174,16 @@ class UserCustomPermission(models.Model):
 
     def __str__(self):
         return f"Custom perms for {self.user.username}"
+
+
+class PasswordRecovery(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, null=True, on_delete=models.CASCADE)
+    email = models.EmailField()
+    code_hash = models.CharField(max_length=256)
+    token_hash = models.CharField(max_length=64, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    verified = models.BooleanField(default=False)
+    consumed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()

@@ -1,6 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
-from .models import InventoryCategory, InventoryItem
+from .models import InventoryCategory, InventoryItem, StockAlert, WastageRecord
 
 
 class InventoryCategorySerializer(serializers.ModelSerializer):
@@ -84,4 +84,25 @@ class InventoryItemSerializer(serializers.ModelSerializer):
         if not trimmed:
             raise serializers.ValidationError('Ingredient name cannot be blank.')
         return trimmed
+
+
+class StockAlertSerializer(serializers.ModelSerializer):
+    stock_remaining_percent = serializers.IntegerField(min_value=0, max_value=100)
+    item_name = serializers.CharField(source='item.name', read_only=True)
+    reporter_name = serializers.CharField(source='reported_by.username', read_only=True)
+
+    class Meta:
+        model = StockAlert
+        fields = ['id', 'item', 'item_name', 'stock_remaining_percent', 'note', 'resolved', 'reporter_name', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class WastageSerializer(serializers.ModelSerializer):
+    quantity = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
+    item_name = serializers.CharField(source='item.name', read_only=True)
+
+    class Meta:
+        model = WastageRecord
+        fields = ['id', 'item', 'item_name', 'quantity', 'reason', 'created_at']
+        read_only_fields = ['created_at']
 
