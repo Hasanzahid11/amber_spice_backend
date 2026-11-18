@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'apps.staff',
     'apps.analytics',
     'apps.engagement',
+    'apps.seo',
 ]
 
 MIDDLEWARE = [
