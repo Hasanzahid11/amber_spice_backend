@@ -31,6 +31,7 @@ AUTH_USER_MODEL = 'accounts.User'
 
 # Application definition
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -39,6 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     # Third-party packages
+    'channels',
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
@@ -57,6 +59,7 @@ INSTALLED_APPS = [
     'apps.analytics',
     'apps.engagement',
     'apps.seo',
+    'apps.notifications',
 ]
 
 MIDDLEWARE = [
@@ -89,6 +92,16 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
+
+redis_channel_host = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1')
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [redis_channel_host],
+        },
+    },
+}
 
 # ==============================================================================
 # Database Configuration (PostgreSQL default, with SQLite dev toggle)

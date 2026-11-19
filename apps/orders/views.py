@@ -96,6 +96,11 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
             process_new_order_notification.apply_async(args=[order.id], retry=False)
         except Exception:
             logger.warning('Order %s saved; notification could not be queued.', order.id)
+        try:
+            from apps.notifications.broadcaster import broadcast_order_created
+            broadcast_order_created(order)
+        except Exception as e:
+            logger.warning('Order %s real-time broadcast failed: %s', order.id, e)
         return Response(self.checkout_response(order), status=status.HTTP_201_CREATED)
 
     @staticmethod
@@ -195,6 +200,14 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
         order.status = new_status
         order.save(update_fields=['status', 'updated_at'])
         OrderEvent.objects.create(order=order, status=new_status)
+        try:
+            from apps.notifications.broadcaster import broadcast_order_status_updated, broadcast_kitchen_ticket
+            actor_name = user.get_full_name() or user.username
+            broadcast_order_status_updated(order, actor_name=actor_name)
+            if new_status == 'preparing':
+                broadcast_kitchen_ticket(order, action='received')
+        except Exception as e:
+            logger.warning('Order %s real-time status broadcast failed: %s', order.id, e)
         return Response(OrderSerializer(order).data)
 
     @extend_schema(request=DeliveryAssignmentSerializer, responses=inline_serializer('DeliveryAssignmentResponse', fields={

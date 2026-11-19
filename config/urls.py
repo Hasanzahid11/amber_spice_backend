@@ -33,6 +33,7 @@ urlpatterns = [
     path('api/v1/staff/', include('apps.staff.urls')),
     path('api/v1/analytics/', include('apps.analytics.urls')),
     path('api/v1/seo/', include('apps.seo.urls')),
+    path('api/v1/notifications/', include('apps.notifications.urls')),
     path('api/v1/', include('apps.engagement.urls')),
 ]
 

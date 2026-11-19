@@ -74,7 +74,44 @@ class StockAlertViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.U
         return [IsRestaurantStaff()] if self.action in ['list', 'create'] else [CanManageInventory()]
 
     def perform_create(self, serializer):
-        serializer.save(reported_by=self.request.user, resolved=False)
+        alert = serializer.save(reported_by=self.request.user, resolved=False)
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            from apps.notifications.models import Notification
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                alert_payload = {
+                    'id': str(alert.id),
+                    'ingredientName': alert.item.name if alert.item else 'Ingredient',
+                    'stockRemainingPercent': alert.stock_remaining_percent,
+                    'note': alert.note,
+                    'reporterName': alert.reported_by.username if alert.reported_by else 'Chef',
+                    'createdAt': alert.created_at.isoformat(),
+                }
+                notif = Notification.objects.create(
+                    type=Notification.NotificationType.STOCK_ALERT,
+                    target_role='admin',
+                    title=f"Low Stock: {alert_payload['ingredientName']}",
+                    message=f"{alert_payload['ingredientName']} is at {alert.stock_remaining_percent}% stock. Note: {alert.note}",
+                    data=alert_payload,
+                )
+                async_to_sync(channel_layer.group_send)(
+                    'admin_operations',
+                    {
+                        'type': 'stock.alert',
+                        'alert': alert_payload,
+                        'notification': {
+                            'id': notif.id,
+                            'type': notif.type,
+                            'title': notif.title,
+                            'message': notif.message,
+                            'createdAt': notif.created_at.isoformat(),
+                        },
+                    }
+                )
+        except Exception:
+            pass
 
 
 class WastageViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
