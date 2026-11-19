@@ -8,8 +8,14 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from apps.seo.views import DynamicSitemapView, DynamicRobotsView
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # Live dynamic SEO sitemap and robots
+    path('sitemap.xml', DynamicSitemapView.as_view(), name='dynamic-sitemap'),
+    path('robots.txt', DynamicRobotsView.as_view(), name='dynamic-robots'),
 
     # OpenAPI 3 Documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
@@ -21,10 +27,13 @@ urlpatterns = [
     path('api/v1/profiles/', include('apps.profiles.urls')),
     path('api/v1/menu/', include('apps.menu.urls')),
     path('api/v1/orders/', include('apps.orders.urls')),
+    path('api/v1/rider/', include('apps.orders.rider_urls')),
     path('api/v1/reservations/', include('apps.reservations.urls')),
     path('api/v1/inventory/', include('apps.inventory.urls')),
     path('api/v1/staff/', include('apps.staff.urls')),
     path('api/v1/analytics/', include('apps.analytics.urls')),
+    path('api/v1/seo/', include('apps.seo.urls')),
+    path('api/v1/', include('apps.engagement.urls')),
 ]
 
 if settings.DEBUG:

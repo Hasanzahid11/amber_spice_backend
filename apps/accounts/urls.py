@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
+from .recovery import RecoveryRequestView, RecoveryVerifyView, RecoveryConfirmView
 
 from .views import (
     ChangePasswordView,
@@ -19,6 +20,9 @@ router.register('staff', StaffViewSet, basename='staff-management')
 router.register('roles-config', RolePermissionConfigViewSet, basename='roles-config')
 
 urlpatterns = [
+    path('password-recovery/request/', RecoveryRequestView.as_view(), name='recovery-request'),
+    path('password-recovery/verify/', RecoveryVerifyView.as_view(), name='recovery-verify'),
+    path('password-recovery/confirm/', RecoveryConfirmView.as_view(), name='recovery-confirm'),
     # Authentication endpoints
     path('register/', RegisterView.as_view(), name='auth_register'),
     path('login/', CustomLoginView.as_view(), name='auth_login'),

@@ -107,9 +107,18 @@ The system will automatically:
    ```
 
 6. **Start development server:**
+   On Windows, from the backend folder:
+   ```powershell
+   .\start-dev.ps1
+   ```
+   This binds to `127.0.0.1:8000` and enables DEBUG for this development process so Django serves uploaded `/media/` images. It does not modify `.env`. Use `-Port 8001` for another port.
+
+   Alternatively, with development DEBUG enabled:
    ```bash
    python manage.py runserver
    ```
+
+   Restart the backend after moving Python modules into packages; the autoreloader can keep the old modules loaded after file moves. If uploads are missing, check that the **running** `/api/schema/?format=json` includes an `image` binary field in the dish multipart request. An old process can accept the dish but ignore its image field. Files ignored by that old process must be selected again in Edit Dish.
 
 ---
 
@@ -146,4 +155,14 @@ Once the server is running, explore the interactive documentation and try out en
 
 ### 📊 Analytics & Reports (`/api/v1/analytics/`)
 - `GET /api/v1/analytics/summary/` - Real-time revenue, orders, tables, and top dishes (Manager & Admin only, Redis cached).
+
+## Menu Category API
+
+The connected customer/admin delivery workflow, request properties, role restrictions and remaining integrations are documented in [Delivery pipeline](../docs/delivery-pipeline.md). Apply the orders migrations before using quote, checkout, assignment, tracking and cash collection.
+
+See [Menu Category API](docs/menu-categories.md) for request/response properties, create/update examples, permissions, search/filter/pagination and archive/restore behavior.
+
+See [Menu app structure](apps/menu/README.md) for the models, serializers, views, services, admin and test folders.
+
+See [Dish API and creator attribution](docs/menu-dishes.md) for dish creation under categories, uploads, editing, availability and the read-only Added by property.
 

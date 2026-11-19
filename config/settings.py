@@ -7,6 +7,8 @@ import os
 from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -39,6 +41,7 @@ INSTALLED_APPS = [
     # Third-party packages
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
     'drf_spectacular',
@@ -52,6 +55,8 @@ INSTALLED_APPS = [
     'apps.inventory',
     'apps.staff',
     'apps.analytics',
+    'apps.engagement',
+    'apps.seo',
 ]
 
 MIDDLEWARE = [
@@ -121,6 +126,9 @@ CACHES = {
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'IGNORE_EXCEPTIONS': True,  # Gracefully fall back if Redis is temporarily unreachable
+            'SOCKET_CONNECT_TIMEOUT': 0.5,
+            'SOCKET_TIMEOUT': 0.5,
+            'CONNECTION_POOL_KWARGS': {'retry': Retry(NoBackoff(), 0)},
         }
     }
 }
@@ -134,6 +142,20 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+
+# Restaurant checkout policy. Catalog prices include VAT.
+ORDER_DELIVERY_FEE = os.getenv('ORDER_DELIVERY_FEE', '2.00')
+ORDER_FREE_DELIVERY_THRESHOLD = os.getenv('ORDER_FREE_DELIVERY_THRESHOLD', '30.00')
+ORDER_INCLUDED_VAT_RATE = os.getenv('ORDER_INCLUDED_VAT_RATE', '0.135')
+
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', '')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@localhost')
 
 # ==============================================================================
 # Django REST Framework & JWT Configuration
@@ -180,9 +202,11 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 
 raw_cors = os.getenv('CORS_ALLOWED_ORIGINS', '')
 if raw_cors:
-    CORS_ALLOWED_ALLOWED_ORIGINS = [origin.strip() for origin in raw_cors.split(',') if origin.strip()]
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in raw_cors.split(',') if origin.strip()]
 
 CORS_ALLOW_CREDENTIALS = True
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = [*default_headers, 'x-order-contact-token']
 
 # ==============================================================================
 # Password validation & Internationalization
@@ -204,6 +228,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
+RESTAURANT_TIME_ZONE = os.getenv('RESTAURANT_TIME_ZONE', 'Europe/Dublin')
 USE_I18N = True
 USE_TZ = True
 

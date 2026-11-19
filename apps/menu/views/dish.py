@@ -2,55 +2,28 @@ from django.core.cache import cache
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema
 
 from apps.accounts.permissions import CanManageMenu, CanToggleMenuAvailability
-from .models import Category, Dish
-from .serializers import CategorySerializer, DishSerializer
-
-CACHE_KEY_CATEGORIES = 'menu:categories'
-CACHE_KEY_POPULAR = 'menu:popular_dishes'
-CACHE_TIMEOUT = 60 * 15  # 15 minutes
-
-
-class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.filter(is_active=True).prefetch_related('dishes')
-    serializer_class = CategorySerializer
-    filterset_fields = ['is_active']
-    search_fields = ['name', 'description']
-
-    def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            return [permissions.AllowAny()]
-        return [CanManageMenu()]
-
-    def list(self, request, *args, **kwargs):
-        cached_data = cache.get(CACHE_KEY_CATEGORIES)
-        if cached_data is not None:
-            return Response(cached_data)
-
-        response = super().list(request, *args, **kwargs)
-        cache.set(CACHE_KEY_CATEGORIES, response.data, CACHE_TIMEOUT)
-        return response
-
-    def perform_create(self, serializer):
-        super().perform_create(serializer)
-        cache.delete(CACHE_KEY_CATEGORIES)
-
-    def perform_update(self, serializer):
-        super().perform_update(serializer)
-        cache.delete(CACHE_KEY_CATEGORIES)
-
-    def perform_destroy(self, instance):
-        super().perform_destroy(instance)
-        cache.delete(CACHE_KEY_CATEGORIES)
+from ..models import Dish
+from ..serializers import DishSerializer
+from ..serializers.dish import DishAvailabilityResponseSerializer, DishAvailabilitySerializer
+from ..services.cache import CACHE_TIMEOUT, invalidate_menu_cache, popular_cache_key
 
 
 class DishViewSet(viewsets.ModelViewSet):
-    queryset = Dish.objects.select_related('category').prefetch_related('portion_options', 'extra_options').all()
+    queryset = Dish.objects.select_related('category', 'created_by').prefetch_related('portion_options', 'extra_options').all()
     serializer_class = DishSerializer
     filterset_fields = ['category', 'category__slug', 'station', 'is_available', 'is_bestseller', 'is_popular', 'is_special']
     search_fields = ['name', 'description', 'category__name']
     ordering_fields = ['price', 'rating', 'orders_count', 'created_at']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.is_authenticated and user.has_restaurant_permission('menu:manage'):
+            return queryset
+        return queryset.filter(category__is_active=True)
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'popular', 'bestsellers']:
@@ -61,21 +34,27 @@ class DishViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def popular(self, request):
-        cached_popular = cache.get(CACHE_KEY_POPULAR)
+        cache_key = popular_cache_key(request)
+        cached_popular = cache.get(cache_key)
         if cached_popular is not None:
             return Response(cached_popular)
 
-        popular_dishes = self.get_queryset().filter(is_available=True, is_popular=True)[:10]
+        popular_dishes = self.get_queryset().filter(
+            category__is_active=True, is_available=True, is_popular=True,
+        )[:10]
         serializer = self.get_serializer(popular_dishes, many=True)
-        cache.set(CACHE_KEY_POPULAR, serializer.data, CACHE_TIMEOUT)
+        cache.set(cache_key, serializer.data, CACHE_TIMEOUT)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def bestsellers(self, request):
-        bestsellers = self.get_queryset().filter(is_available=True, is_bestseller=True)[:10]
+        bestsellers = self.get_queryset().filter(
+            category__is_active=True, is_available=True, is_bestseller=True,
+        )[:10]
         serializer = self.get_serializer(bestsellers, many=True)
         return Response(serializer.data)
 
+    @extend_schema(request=DishAvailabilitySerializer, responses=DishAvailabilityResponseSerializer)
     @action(detail=True, methods=['patch', 'post'], url_path='toggle-availability')
     def toggle_availability(self, request, pk=None):
         """
@@ -85,19 +64,15 @@ class DishViewSet(viewsets.ModelViewSet):
         Allows Kitchen Staff, Cashier, Manager, Admin to toggle dish availability.
         """
         dish = self.get_object()
-        raw = request.data.get('is_available')
-
-        if raw is not None:
-            if isinstance(raw, str):
-                dish.is_available = raw.lower() in ('true', '1')
-            else:
-                dish.is_available = bool(raw)
+        serializer = DishAvailabilitySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if 'is_available' in serializer.validated_data:
+            dish.is_available = serializer.validated_data['is_available']
         else:
             dish.is_available = not dish.is_available
 
         dish.save(update_fields=['is_available'])
-        cache.delete(CACHE_KEY_POPULAR)
-        cache.delete(CACHE_KEY_CATEGORIES)
+        invalidate_menu_cache()
 
         status_text = 'available' if dish.is_available else 'unavailable'
         return Response({
@@ -108,16 +83,13 @@ class DishViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     def perform_create(self, serializer):
-        super().perform_create(serializer)
-        cache.delete(CACHE_KEY_POPULAR)
-        cache.delete(CACHE_KEY_CATEGORIES)
+        serializer.save(created_by=self.request.user)
+        invalidate_menu_cache()
 
     def perform_update(self, serializer):
         super().perform_update(serializer)
-        cache.delete(CACHE_KEY_POPULAR)
-        cache.delete(CACHE_KEY_CATEGORIES)
+        invalidate_menu_cache()
 
     def perform_destroy(self, instance):
         super().perform_destroy(instance)
-        cache.delete(CACHE_KEY_POPULAR)
-        cache.delete(CACHE_KEY_CATEGORIES)
+        invalidate_menu_cache()

@@ -22,6 +22,8 @@ class UserAddressViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return UserAddress.objects.none()
         return AddressService.get_user_addresses(self.request.user)
 
     def perform_create(self, serializer):
@@ -33,6 +35,6 @@ class UserAddressViewSet(viewsets.ModelViewSet):
     @extend_schema(responses={200: UserAddressSerializer})
     @action(detail=True, methods=['post'], url_path='set-default')
     def set_default(self, request, pk=None):
-        address = AddressService.set_default_address(request.user, pk)
+        address = AddressService.set_default_address(request.user, self.get_object().pk)
         serializer = self.get_serializer(address)
         return Response(serializer.data, status=status.HTTP_200_OK)

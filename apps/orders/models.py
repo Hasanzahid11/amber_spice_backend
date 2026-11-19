@@ -48,6 +48,11 @@ class Order(models.Model):
     )
     customer_name = models.CharField(max_length=120)
     customer_phone = models.CharField(max_length=30, blank=True)
+    customer_email = models.EmailField(blank=True)
+    customer_chat_token = models.UUIDField(default=uuid.uuid4, editable=False)
+    client_request_id = models.UUIDField(null=True, blank=True, unique=True, editable=False)
+    request_fingerprint = models.CharField(max_length=64, blank=True, editable=False)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
     dining_type = models.CharField(
         max_length=20,
         choices=DiningType.choices,
@@ -73,7 +78,10 @@ class Order(models.Model):
     tax = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    coupon_code = models.CharField(max_length=40, blank=True)
     delivery_address = models.TextField(blank=True)
+    delivery_postal_code = models.CharField(max_length=20, blank=True)
     notes = models.TextField(blank=True)
     estimated_time_minutes = models.PositiveIntegerField(default=25)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -85,7 +93,7 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         if not self.order_number:
             date_str = timezone.now().strftime('%Y%m%d')
-            unique_suffix = uuid.uuid4().hex[:5].upper()
+            unique_suffix = uuid.uuid4().hex[:18].upper()
             self.order_number = f"ORD-{date_str}-{unique_suffix}"
         super().save(*args, **kwargs)
 
@@ -109,3 +117,88 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity}x {self.name} (${self.price * self.quantity})"
+
+
+class OrderEvent(models.Model):
+    order = models.ForeignKey(Order, related_name='events', on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=Order.Status.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+
+
+class RiderProfile(models.Model):
+    class Vehicle(models.TextChoices):
+        BICYCLE = 'bicycle', 'Bicycle'
+        MOTORBIKE = 'motorbike', 'Motorbike'
+        CAR = 'car', 'Car'
+        WALKING = 'walking', 'Walking'
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, related_name='rider_profile', on_delete=models.CASCADE)
+    on_duty = models.BooleanField(default=False)
+    vehicle_type = models.CharField(max_length=20, choices=Vehicle.choices, default=Vehicle.BICYCLE)
+    vehicle_registration = models.CharField(max_length=30, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class DeliveryJob(models.Model):
+    class Stage(models.TextChoices):
+        UNASSIGNED = 'unassigned', 'Awaiting assignment'
+        ASSIGNED = 'assigned', 'Assigned'
+        ACCEPTED = 'accepted', 'Accepted'
+        PICKED_UP = 'picked_up', 'Picked up'
+        ARRIVED = 'arrived', 'Arrived'
+        RETURNING = 'returning', 'Returning to restaurant'
+        RETURNED = 'returned', 'Returned to restaurant'
+        DELIVERED = 'delivered', 'Delivered'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    order = models.OneToOneField(Order, related_name='delivery_job', on_delete=models.CASCADE)
+    stage = models.CharField(max_length=20, choices=Stage.choices, default=Stage.UNASSIGNED)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    picked_up_at = models.DateTimeField(null=True, blank=True)
+    arrived_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    cash_collected_at = models.DateTimeField(null=True, blank=True)
+    return_requested_at = models.DateTimeField(null=True, blank=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+    handed_over_at = models.DateTimeField(null=True, blank=True)
+    handed_over_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='kitchen_handovers')
+    handover_code = models.CharField(max_length=12, blank=True, editable=False)
+    bag_count = models.PositiveSmallIntegerField(default=0)
+    packed_items = models.JSONField(default=list, blank=True)
+    bags_sealed = models.BooleanField(default=False)
+    pickup_verified_at = models.DateTimeField(null=True, blank=True)
+    delivery_verified_at = models.DateTimeField(null=True, blank=True)
+    issue_code = models.CharField(max_length=30, blank=True)
+    issue_note = models.CharField(max_length=1000, blank=True)
+    issue_reported_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class DeliveryEvent(models.Model):
+    order = models.ForeignKey(Order, related_name='delivery_events', on_delete=models.CASCADE)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=30)
+    note = models.CharField(max_length=1200, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+
+
+class DeliveryMessage(models.Model):
+    order = models.ForeignKey(Order, related_name='delivery_messages', on_delete=models.CASCADE)
+    rider = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='delivery_conversations')
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='sent_delivery_messages')
+    sender_role = models.CharField(max_length=10, choices=[('customer', 'Customer'), ('rider', 'Rider')])
+    sender_name = models.CharField(max_length=150)
+    body = models.CharField(max_length=2000)
+    client_message_id = models.UUIDField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        constraints = [models.UniqueConstraint(fields=['order', 'rider', 'sender_role', 'client_message_id'], name='unique_delivery_message_retry')]
