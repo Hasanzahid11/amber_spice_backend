@@ -104,3 +104,24 @@ class NewsletterSubscriber(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class BannerSlide(models.Model):
+    tag = models.CharField(max_length=120, default='SPECIAL OFFER', help_text='Badge or top highlight text')
+    title_line1 = models.CharField(max_length=150, default='', help_text='First line of main heading')
+    title_line2 = models.CharField(max_length=150, blank=True, default='', help_text='Second line / colored highlight text')
+    subtitle = models.TextField(blank=True, help_text='Descriptive paragraph')
+    cta_text = models.CharField(max_length=80, default='Order Now', help_text='Button label')
+    cta_link = models.CharField(max_length=100, default='menu', help_text='Navigation target or link (e.g. menu, reservation, offers, order)')
+    image_url = models.CharField(max_length=500, default='/figma-assets/hero-family-combos.png', help_text='Image URL or asset path')
+    display_order = models.PositiveIntegerField(default=1, help_text='Slide sort order')
+    is_active = models.BooleanField(default=True, help_text='Whether slide is visible on public site')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['display_order', 'id']
+
+    def __str__(self):
+        return f"{self.display_order}. {self.title_line1} {self.title_line2}".strip()
+

@@ -1,9 +1,20 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from .views import PromotionViewSet, FaqViewSet, GalleryViewSet, ReviewViewSet, ContactMessageViewSet, NewsletterViewSet, MenuAssistantView, RestaurantProfileViewSet
+from .views import (
+    PromotionViewSet,
+    BannerSlideViewSet,
+    FaqViewSet,
+    GalleryViewSet,
+    ReviewViewSet,
+    ContactMessageViewSet,
+    NewsletterViewSet,
+    MenuAssistantView,
+    RestaurantProfileViewSet,
+)
 
 router = DefaultRouter()
 router.register('content/restaurant', RestaurantProfileViewSet, basename='restaurant-profile')
+router.register('content/banners', BannerSlideViewSet, basename='banner-slide')
 router.register('promotions', PromotionViewSet, basename='promotion')
 router.register('content/faqs', FaqViewSet, basename='faq')
 router.register('content/gallery', GalleryViewSet, basename='gallery')

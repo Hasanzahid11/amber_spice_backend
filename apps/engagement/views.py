@@ -8,9 +8,9 @@ from rest_framework.views import APIView
 from rest_framework import serializers
 from drf_spectacular.utils import inline_serializer
 from apps.accounts.permissions import HasRestaurantPermission
-from .models import Promotion, Faq, GalleryItem, Review, HelpfulVote, ContactMessage, NewsletterSubscriber, RestaurantProfile
+from .models import Promotion, Faq, GalleryItem, Review, HelpfulVote, ContactMessage, NewsletterSubscriber, RestaurantProfile, BannerSlide
 from .serializers import (PromotionSerializer, FaqSerializer, GalleryItemSerializer, ReviewSerializer,
-                          ReviewModerationSerializer, ContactMessageSerializer, ContactStatusSerializer, NewsletterSerializer, RestaurantProfileSerializer)
+                          ReviewModerationSerializer, ContactMessageSerializer, ContactStatusSerializer, NewsletterSerializer, RestaurantProfileSerializer, BannerSlideSerializer)
 
 
 def manages_content(user):
@@ -54,6 +54,70 @@ class PromotionViewSet(PublicContentViewSet):
         if not manages_content(self.request.user):
             queryset = queryset.filter(valid_until__gte=timezone.localdate())
         return queryset
+
+
+DEFAULT_BANNER_SLIDES = [
+    {
+        'tag': 'SPECIAL WEEKEND FEAST',
+        'title_line1': 'Celebrate with Gourmet',
+        'title_line2': 'Family Combos',
+        'subtitle': 'Complete celebratory dining featuring biryanis, hot garlic butter naans, aromatic gravies and sides.',
+        'cta_text': 'Book a Table',
+        'cta_link': 'reservation',
+        'image_url': '/figma-assets/hero-family-combos.png',
+        'display_order': 1,
+        'is_active': True,
+    },
+    {
+        'tag': 'ROYAL HERITAGE RECIPE',
+        'title_line1': 'Savor Authentic Handi',
+        'title_line2': 'Dum Biryanis',
+        'subtitle': 'Aged long-grain basmati layered with saffron, caramelized shallots, and tender halal Irish lamb cooked on low charcoal flame.',
+        'cta_text': 'Explore Biryanis',
+        'cta_link': 'menu',
+        'image_url': '/figma-assets/biryani.png',
+        'display_order': 2,
+        'is_active': True,
+    },
+    {
+        'tag': 'LIVE TANDOOR & CHARCOAL',
+        'title_line1': 'Flame-Kissed Smoky',
+        'title_line2': 'Tandoori Platters',
+        'subtitle': 'Succulent skewers marinated overnight in artisanal hung curd, Kashmiri chilies, and aromatic roasted whole spices.',
+        'cta_text': 'Order Platters',
+        'cta_link': 'menu',
+        'image_url': '/figma-assets/grill.png',
+        'display_order': 3,
+        'is_active': True,
+    },
+    {
+        'tag': 'CHEF SIGNATURE CURRIES',
+        'title_line1': 'Slow-Simmered Velvety',
+        'title_line2': 'Old Delhi Curries',
+        'subtitle': 'Rich satin cashew-tomato gravies finished with fresh Irish butter, fragrant dried fenugreek, and warm toasted naan.',
+        'cta_text': 'Order Curries',
+        'cta_link': 'menu',
+        'image_url': '/figma-assets/curry.png',
+        'display_order': 4,
+        'is_active': True,
+    },
+]
+
+
+def ensure_default_banners():
+    if not BannerSlide.objects.exists():
+        for item in DEFAULT_BANNER_SLIDES:
+            BannerSlide.objects.create(**item)
+
+
+class BannerSlideViewSet(PublicContentViewSet):
+    queryset = BannerSlide.objects.all().order_by('display_order', 'id')
+    serializer_class = BannerSlideSerializer
+    search_fields = ['tag', 'title_line1', 'title_line2', 'subtitle']
+
+    def get_queryset(self):
+        ensure_default_banners()
+        return super().get_queryset().order_by('display_order', 'id')
 
 
 class FaqViewSet(PublicContentViewSet):

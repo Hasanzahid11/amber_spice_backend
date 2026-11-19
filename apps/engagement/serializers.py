@@ -1,7 +1,7 @@
 from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Promotion, Faq, GalleryItem, Review, ContactMessage, NewsletterSubscriber, RestaurantProfile
+from .models import Promotion, Faq, GalleryItem, Review, ContactMessage, NewsletterSubscriber, RestaurantProfile, BannerSlide
 
 
 class PostcodePrefixesField(serializers.CharField):
@@ -132,3 +132,39 @@ class NewsletterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         subscriber, _ = NewsletterSubscriber.objects.update_or_create(email=validated_data['email'].lower(), defaults={'consent': True})
         return subscriber
+
+
+class BannerSlideSerializer(serializers.ModelSerializer):
+    titleLine1 = serializers.CharField(source='title_line1', max_length=150)
+    titleLine2 = serializers.CharField(source='title_line2', max_length=150, required=False, allow_blank=True)
+    ctaText = serializers.CharField(source='cta_text', max_length=80)
+    ctaLink = serializers.CharField(source='cta_link', max_length=100, required=False, allow_blank=True)
+    imageUrl = serializers.CharField(source='image_url', max_length=500)
+    displayOrder = serializers.IntegerField(source='display_order', default=1, min_value=0)
+    isActive = serializers.BooleanField(source='is_active', default=True)
+
+    class Meta:
+        model = BannerSlide
+        fields = [
+            'id', 'tag', 'titleLine1', 'titleLine2', 'subtitle',
+            'ctaText', 'ctaLink', 'imageUrl', 'displayOrder', 'isActive'
+        ]
+
+    def to_internal_value(self, data):
+        normalized = dict(data)
+        if 'title_line1' in normalized and 'titleLine1' not in normalized:
+            normalized['titleLine1'] = normalized['title_line1']
+        if 'title_line2' in normalized and 'titleLine2' not in normalized:
+            normalized['titleLine2'] = normalized['title_line2']
+        if 'cta_text' in normalized and 'ctaText' not in normalized:
+            normalized['ctaText'] = normalized['cta_text']
+        if 'cta_link' in normalized and 'ctaLink' not in normalized:
+            normalized['ctaLink'] = normalized['cta_link']
+        if 'image_url' in normalized and 'imageUrl' not in normalized:
+            normalized['imageUrl'] = normalized['image_url']
+        if 'display_order' in normalized and 'displayOrder' not in normalized:
+            normalized['displayOrder'] = normalized['display_order']
+        if 'is_active' in normalized and 'isActive' not in normalized:
+            normalized['isActive'] = normalized['is_active']
+        return super().to_internal_value(normalized)
+
