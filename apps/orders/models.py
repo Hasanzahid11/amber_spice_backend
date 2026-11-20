@@ -84,6 +84,10 @@ class Order(models.Model):
     delivery_postal_code = models.CharField(max_length=20, blank=True)
     notes = models.TextField(blank=True)
     estimated_time_minutes = models.PositiveIntegerField(default=25)
+    pickup_code = models.CharField(max_length=16, blank=True, default='')
+    pickup_rack = models.CharField(max_length=64, blank=True, default='')
+    customer_arrived_at = models.DateTimeField(null=True, blank=True)
+    picked_up_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -95,10 +99,21 @@ class Order(models.Model):
             date_str = timezone.now().strftime('%Y%m%d')
             unique_suffix = uuid.uuid4().hex[:18].upper()
             self.order_number = f"ORD-{date_str}-{unique_suffix}"
+        if self.dining_type == self.DiningType.TAKEAWAY and not self.pickup_code:
+            import secrets
+            self.pickup_code = f"TK-{secrets.randbelow(9000) + 1000}"
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.order_number} - {self.customer_name} (${self.total_amount})"
+
+    @property
+    def display_pickup_code(self):
+        if self.pickup_code:
+            return self.pickup_code
+        if self.dining_type == self.DiningType.TAKEAWAY:
+            return f"TK-{self.id:04d}" if self.id else "TK-0001"
+        return ""
 
     @property
     def elapsed_minutes(self):

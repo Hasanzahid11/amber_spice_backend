@@ -85,6 +85,13 @@ class OperationsConsumer(AsyncJsonWebsocketConsumer):
             'alert': event.get('alert'),
         })
 
+    async def customer_arrived(self, event):
+        await self.send_json({
+            'type': 'customer.arrived',
+            'order': event['order'],
+            'notification': event.get('notification'),
+        })
+
 
 class KitchenConsumer(AsyncJsonWebsocketConsumer):
     """
@@ -140,4 +147,11 @@ class KitchenConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             'type': 'kitchen.ticket_updated',
             'ticket': event['ticket'],
+        })
+
+    async def customer_arrived(self, event):
+        await self.send_json({
+            'type': 'customer.arrived',
+            'order': event['order'],
+            'notification': event.get('notification'),
         })

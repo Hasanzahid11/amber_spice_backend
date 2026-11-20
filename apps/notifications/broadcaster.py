@@ -32,6 +32,11 @@ def build_order_payload(order):
         'customerName': order.customer_name or 'Walk-in / Guest',
         'customerPhone': order.customer_phone or '',
         'diningType': order.dining_type,
+        'isTakeaway': order.dining_type == 'takeaway',
+        'pickupCode': getattr(order, 'display_pickup_code', ''),
+        'pickupRack': getattr(order, 'pickup_rack', '') or '',
+        'customerArrivedAt': order.customer_arrived_at.isoformat() if getattr(order, 'customer_arrived_at', None) else None,
+        'pickedUpAt': order.picked_up_at.isoformat() if getattr(order, 'picked_up_at', None) else None,
         'tableNumber': order.table_number or '',
         'deliveryAddress': getattr(order, 'delivery_address', ''),
         'status': order.status,
@@ -173,3 +178,45 @@ def broadcast_order_status_updated(order, actor_name=None):
             logger.info("Broadcasted status update %s for #%s", order.status, order.order_number)
     except Exception as e:
         logger.exception("Error broadcasting order status update: %s", e)
+
+
+def broadcast_customer_arrived(order):
+    """
+    Broadcasts real-time event when a takeaway customer signals they have
+    arrived at the restaurant counter to pick up their order.
+    """
+    try:
+        payload = build_order_payload(order)
+        code = payload.get('pickupCode') or f"#{order.id}"
+        title = f"Customer Arrived at Counter! ({code})"
+        message = f"{order.customer_name} is waiting at the counter to collect Takeaway {code} ({payload['itemsCount']} items)."
+
+        notif = Notification.objects.create(
+            type=Notification.NotificationType.CUSTOMER_ARRIVED,
+            target_role='all',
+            title=title,
+            message=message,
+            order=order,
+            data=payload,
+            is_read=False,
+        )
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            event_data = {
+                'type': 'customer.arrived',
+                'order': payload,
+                'notification': {
+                    'id': notif.id,
+                    'type': 'customer_arrived',
+                    'title': notif.title,
+                    'message': notif.message,
+                    'createdAt': notif.created_at.isoformat(),
+                    'orderId': order.id,
+                },
+            }
+            async_to_sync(channel_layer.group_send)('admin_operations', event_data)
+            async_to_sync(channel_layer.group_send)('kitchen_kds', event_data)
+            logger.info("Broadcasted customer.arrived for #%s (%s)", order.order_number, code)
+    except Exception as e:
+        logger.exception("Error broadcasting customer.arrived: %s", e)

@@ -82,6 +82,10 @@ class OrderSerializer(serializers.ModelSerializer):
     discountAmount = serializers.DecimalField(source='discount_amount', max_digits=10, decimal_places=2, read_only=True)
     couponCode = serializers.CharField(source='coupon_code', read_only=True)
     scheduledFor = serializers.DateTimeField(source='scheduled_for', read_only=True)
+    pickupCode = serializers.CharField(source='display_pickup_code', read_only=True)
+    pickupRack = serializers.CharField(source='pickup_rack', read_only=True)
+    customerArrivedAt = serializers.DateTimeField(source='customer_arrived_at', read_only=True)
+    pickedUpAt = serializers.DateTimeField(source='picked_up_at', read_only=True)
     events = OrderEventSerializer(many=True, read_only=True)
 
     class Meta:
@@ -95,6 +99,10 @@ class OrderSerializer(serializers.ModelSerializer):
             'customerEmail',
             'diningType',
             'tableNumber',
+            'pickupCode',
+            'pickupRack',
+            'customerArrivedAt',
+            'pickedUpAt',
             'status',
             'paymentStatus',
             'paymentMethod',
@@ -193,6 +201,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             'delivery_address',
             'delivery_postal_code',
             'notes',
+            'pickup_rack',
             'estimated_time_minutes',
             'items',
         ]
@@ -210,6 +219,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             'scheduledFor': 'scheduled_for',
             'diningType': 'dining_type',
             'tableNumber': 'table_number',
+            'pickupRack': 'pickup_rack',
             'paymentMethod': 'payment_method',
             'deliveryAddress': 'delivery_address',
             'deliveryPostalCode': 'delivery_postal_code',

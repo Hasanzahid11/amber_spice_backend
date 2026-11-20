@@ -44,7 +44,7 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
                 'collect_cash': CashCollectionSerializer}.get(self.action, OrderSerializer)
 
     def get_permissions(self):
-        if self.action in ['create', 'track', 'quote']:
+        if self.action in ['create', 'track', 'track_arrived', 'quote']:
             return [permissions.AllowAny()]
         if self.action == 'kitchen':
             return [CanAccessKitchenKDS()]
@@ -138,6 +138,104 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
         order = get_object_or_404(self.queryset, order_number__iexact=order_number)
         return Response(OrderSerializer(order).data)
 
+    @extend_schema(
+        responses=inline_serializer('TakeawayArrivalResponse', fields={
+            'message': serializers.CharField(),
+            'orderNumber': serializers.CharField(),
+            'pickupCode': serializers.CharField(),
+            'customerArrivedAt': serializers.DateTimeField(),
+        }),
+        description='Customer announces arrival at the restaurant counter for takeaway collection.'
+    )
+    @action(detail=False, methods=['post'], url_path=r'track/(?P<order_number>[\w\-]+)/arrived')
+    @transaction.atomic
+    def track_arrived(self, request, order_number=None):
+        order = get_object_or_404(self.queryset.select_for_update(of=('self',)), order_number__iexact=order_number)
+        if order.dining_type != Order.DiningType.TAKEAWAY:
+            raise ValidationError({'detail': 'Arrival check-in is only applicable for takeaway orders.'})
+        if order.status == Order.Status.DELIVERED:
+            raise ValidationError({'detail': 'This order has already been collected.'})
+        if order.status == Order.Status.CANCELLED:
+            raise ValidationError({'detail': 'This order was cancelled.'})
+
+        now = timezone.now()
+        order.customer_arrived_at = now
+        order.save(update_fields=['customer_arrived_at', 'updated_at'])
+
+        try:
+            from apps.notifications.broadcaster import broadcast_customer_arrived
+            broadcast_customer_arrived(order)
+        except Exception as e:
+            logger.warning('Customer arrival broadcast failed for %s: %s', order.order_number, e)
+
+        return Response({
+            'message': 'Counter staff has been notified of your arrival.',
+            'orderNumber': order.order_number,
+            'pickupCode': order.display_pickup_code,
+            'customerArrivedAt': order.customer_arrived_at,
+        })
+
+    @extend_schema(
+        responses=OrderSerializer,
+        description='JWT with orders:update_status or kitchen:update_status. Fast counter completion for ready takeaway orders. Verifies handover, marks delivered, and completes payment if cash.'
+    )
+    @action(detail=True, methods=['post'], url_path='complete-takeaway')
+    @transaction.atomic
+    def complete_takeaway(self, request, pk=None):
+        order = get_object_or_404(self.get_queryset().select_for_update(of=('self',)), pk=pk)
+        user = request.user
+        if not (user.has_restaurant_permission('orders:update_status') or user.has_restaurant_permission('kitchen:update_status')):
+            raise PermissionDenied('You cannot complete this order.')
+        if order.dining_type != Order.DiningType.TAKEAWAY:
+            raise ValidationError({'detail': 'This endpoint is for takeaway orders only.'})
+        if order.status in ['delivered', 'cancelled']:
+            raise ValidationError({'detail': f'Order is already {order.status}.'})
+
+        now = timezone.now()
+        order.status = Order.Status.DELIVERED
+        order.picked_up_at = now
+        update_fields = ['status', 'picked_up_at', 'updated_at']
+
+        if order.payment_status != Order.PaymentStatus.PAID:
+            order.payment_status = Order.PaymentStatus.PAID
+            update_fields.append('payment_status')
+
+        order.save(update_fields=update_fields)
+        OrderEvent.objects.create(order=order, status=Order.Status.DELIVERED)
+
+        try:
+            from apps.notifications.broadcaster import broadcast_order_status_updated
+            actor_name = user.get_full_name() or user.username
+            broadcast_order_status_updated(order, actor_name=actor_name)
+        except Exception as e:
+            logger.warning('Order %s real-time status broadcast failed: %s', order.id, e)
+
+        return Response(OrderSerializer(order).data)
+
+    @extend_schema(
+        request=inline_serializer('PickupRackRequest', fields={'pickupRack': serializers.CharField(max_length=64)}),
+        responses=OrderSerializer,
+        description='Assigns or updates the warming shelf / pickup rack location (e.g. "Warm Shelf A", "Front Counter").'
+    )
+    @action(detail=True, methods=['patch'], url_path='pickup-rack')
+    @transaction.atomic
+    def assign_pickup_rack(self, request, pk=None):
+        order = get_object_or_404(self.get_queryset().select_for_update(of=('self',)), pk=pk)
+        user = request.user
+        if not (user.has_restaurant_permission('orders:update_status') or user.has_restaurant_permission('kitchen:update_status')):
+            raise PermissionDenied('You cannot update shelf location.')
+        rack = request.data.get('pickupRack') or request.data.get('pickup_rack') or 'Front Counter'
+        order.pickup_rack = str(rack).strip()
+        order.save(update_fields=['pickup_rack', 'updated_at'])
+
+        try:
+            from apps.notifications.broadcaster import broadcast_order_status_updated
+            broadcast_order_status_updated(order, actor_name=user.get_full_name() or user.username)
+        except Exception as e:
+            logger.warning('Order %s rack broadcast failed: %s', order.id, e)
+
+        return Response(OrderSerializer(order).data)
+
     @extend_schema(parameters=[OpenApiParameter('station', str)], responses=OrderSerializer(many=True))
     @action(detail=False, methods=['get'])
     def kitchen(self, request):
@@ -197,8 +295,15 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
         if new_status == 'out_for_delivery' and (not order.assigned_delivery_staff or not order.assigned_delivery_staff.is_active):
             raise ValidationError({'status': 'Assign an active delivery staff member before dispatch.'})
         DeliveryWorkflow.sync_operator_status(order, user, new_status)
+        update_fields = ['status', 'updated_at']
+        if new_status == 'delivered' and order.dining_type == 'takeaway':
+            order.picked_up_at = timezone.now()
+            update_fields.append('picked_up_at')
+            if order.payment_status != 'paid':
+                order.payment_status = 'paid'
+                update_fields.append('payment_status')
         order.status = new_status
-        order.save(update_fields=['status', 'updated_at'])
+        order.save(update_fields=update_fields)
         OrderEvent.objects.create(order=order, status=new_status)
         try:
             from apps.notifications.broadcaster import broadcast_order_status_updated, broadcast_kitchen_ticket

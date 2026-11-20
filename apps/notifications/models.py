@@ -9,6 +9,7 @@ class Notification(models.Model):
         KITCHEN_ALERT = 'kitchen_alert', 'Kitchen Ticket Alert'
         KITCHEN_READY = 'kitchen_ready', 'Kitchen Order Ready'
         STOCK_ALERT = 'stock_alert', 'Low Stock Alert'
+        CUSTOMER_ARRIVED = 'customer_arrived', 'Customer Arrived'
         SYSTEM = 'system', 'System Notice'
 
     user = models.ForeignKey(
