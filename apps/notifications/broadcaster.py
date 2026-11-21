@@ -220,3 +220,66 @@ def broadcast_customer_arrived(order):
             logger.info("Broadcasted customer.arrived for #%s (%s)", order.order_number, code)
     except Exception as e:
         logger.exception("Error broadcasting customer.arrived: %s", e)
+
+
+def broadcast_reservation_created(reservation):
+    """
+    Broadcasts new table reservation to 'admin_operations' WebSocket group
+    and persists an unread Notification in the database for the floor manager.
+    """
+    try:
+        table_num = reservation.table.number if reservation.table else 'Unassigned'
+        ref = reservation.booking_reference or ''
+        title = f"New Table Booking #{ref[:8].upper() if ref else 'RESERVED'}"
+        message = f"{reservation.guest_name} booked Table {table_num} for {reservation.guests_count} guests on {reservation.reservation_date} at {reservation.time_slot}."
+
+        notif = Notification.objects.create(
+            type=Notification.NotificationType.RESERVATION_CREATED,
+            target_role='admin',
+            title=title,
+            message=message,
+            data={
+                'id': reservation.id,
+                'bookingReference': ref,
+                'guestName': reservation.guest_name,
+                'guestPhone': reservation.guest_phone,
+                'guestEmail': reservation.guest_email,
+                'guestsCount': reservation.guests_count,
+                'reservationDate': str(reservation.reservation_date),
+                'timeSlot': reservation.time_slot,
+                'tableNumber': table_num,
+                'specialRequests': reservation.special_requests or '',
+                'status': reservation.status,
+            },
+            is_read=False,
+        )
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            event_data = {
+                'type': 'reservation.created',
+                'reservation': {
+                    'id': reservation.id,
+                    'bookingReference': ref,
+                    'guestName': reservation.guest_name,
+                    'guestPhone': reservation.guest_phone,
+                    'guestEmail': reservation.guest_email,
+                    'guestsCount': reservation.guests_count,
+                    'reservationDate': str(reservation.reservation_date),
+                    'timeSlot': reservation.time_slot,
+                    'tableNumber': table_num,
+                    'specialRequests': reservation.special_requests or '',
+                    'status': reservation.status,
+                },
+                'notification': {
+                    'id': notif.id,
+                    'type': notif.type,
+                    'title': notif.title,
+                    'message': notif.message,
+                    'createdAt': notif.created_at.isoformat(),
+                },
+            }
+            async_to_sync(channel_layer.group_send)('admin_operations', event_data)
+            logger.info("Broadcasted reservation.created for #%s to admin_operations", ref)
+    except Exception as e:
+        logger.exception("Error broadcasting reservation.created: %s", e)

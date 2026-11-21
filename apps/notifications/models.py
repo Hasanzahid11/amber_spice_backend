@@ -10,6 +10,8 @@ class Notification(models.Model):
         KITCHEN_READY = 'kitchen_ready', 'Kitchen Order Ready'
         STOCK_ALERT = 'stock_alert', 'Low Stock Alert'
         CUSTOMER_ARRIVED = 'customer_arrived', 'Customer Arrived'
+        RESERVATION_CREATED = 'reservation_created', 'New Table Reservation'
+        RESERVATION_STATUS = 'reservation_status', 'Reservation Status Changed'
         SYSTEM = 'system', 'System Notice'
 
     user = models.ForeignKey(

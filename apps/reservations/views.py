@@ -91,9 +91,15 @@ class ReservationViewSet(viewsets.ModelViewSet):
         customer = self.request.user if self.request.user.is_authenticated else None
         try:
             with transaction.atomic():
-                serializer.save(customer=customer, table=selected, status='confirmed')
+                instance = serializer.save(customer=customer, table=selected, status='confirmed')
         except IntegrityError:
             raise serializers.ValidationError({'timeSlot': 'This slot was just booked. Please choose another.'})
+
+        try:
+            from apps.notifications.broadcaster import broadcast_reservation_created
+            broadcast_reservation_created(instance)
+        except Exception:
+            pass
 
     @extend_schema(responses=ReservationSerializer, description='Public capability link: full random booking reference returned by creation. Keep it private.')
     @action(detail=False, methods=['get'], url_path=r'track/(?P<reference>[a-f0-9]{32})')
