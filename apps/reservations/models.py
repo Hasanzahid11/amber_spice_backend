@@ -31,8 +31,10 @@ class Reservation(models.Model):
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pending'
         CONFIRMED = 'confirmed', 'Confirmed'
+        SEATED = 'seated', 'Seated'
         CANCELLED = 'cancelled', 'Cancelled'
         COMPLETED = 'completed', 'Completed'
+        NO_SHOW = 'no_show', 'No-Show'
 
     table = models.ForeignKey(
         Table,
@@ -61,11 +63,12 @@ class Reservation(models.Model):
     )
     special_requests = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    guest_arrived_at = models.DateTimeField(null=True, blank=True)
     booking_reference = models.CharField(max_length=32, unique=True, null=True, blank=True, editable=False)
 
     class Meta:
         ordering = ['reservation_date', 'time_slot']
-        constraints = [models.UniqueConstraint(fields=['table', 'reservation_date', 'time_slot'], condition=models.Q(status__in=['pending', 'confirmed']), name='one_active_table_booking_per_slot')]
+        constraints = [models.UniqueConstraint(fields=['table', 'reservation_date', 'time_slot'], condition=models.Q(status__in=['pending', 'confirmed', 'seated']), name='one_active_table_booking_per_slot')]
 
     def save(self, *args, **kwargs):
         if not self.booking_reference:

@@ -32,6 +32,7 @@ class ReservationSerializer(serializers.ModelSerializer):
     specialRequests = serializers.CharField(source='special_requests', required=False, allow_blank=True)
     tableDetails = TableSerializer(source='table', read_only=True)
     tableNumber = serializers.CharField(source='table.number', read_only=True)
+    guestArrivedAt = serializers.DateTimeField(source='guest_arrived_at', read_only=True)
 
     class Meta:
         model = Reservation
@@ -50,9 +51,10 @@ class ReservationSerializer(serializers.ModelSerializer):
             'status',
             'specialRequests',
             'created_at',
+            'guestArrivedAt',
             'booking_reference',
         ]
-        read_only_fields = ['customer', 'created_at', 'booking_reference', 'tableNumber']
+        read_only_fields = ['customer', 'created_at', 'booking_reference', 'tableNumber', 'guestArrivedAt']
         validators = []
 
     def validate(self, attrs):

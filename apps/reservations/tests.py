@@ -51,6 +51,17 @@ class ReservationApiTests(APITestCase):
         self.assertEqual(track_res.status_code, status.HTTP_200_OK)
         self.assertEqual(track_res.data['guestName'], 'John Murphy')
         self.assertEqual(track_res.data['tableNumber'], 'T1')
+        self.assertIsNone(track_res.data.get('guestArrivedAt'))
+
+        # Verify arrival check-in
+        arrive_res = self.client.post(f"/api/v1/reservations/bookings/track/{ref}/arrive/")
+        self.assertEqual(arrive_res.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(arrive_res.data['guestArrivedAt'])
+
+        # Verify customer self-cancellation
+        cancel_res = self.client.post(f"/api/v1/reservations/bookings/track/{ref}/cancel/")
+        self.assertEqual(cancel_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(cancel_res.data['status'], 'cancelled')
 
     def test_double_booking_conflict_prevention(self):
         payload = {

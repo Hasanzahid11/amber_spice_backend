@@ -283,3 +283,86 @@ def broadcast_reservation_created(reservation):
             logger.info("Broadcasted reservation.created for #%s to admin_operations", ref)
     except Exception as e:
         logger.exception("Error broadcasting reservation.created: %s", e)
+
+
+def broadcast_reservation_guest_arrived(reservation):
+    """
+    Broadcasts real-time event when a dining party arrives at the restaurant
+    and checks in via the reservation self-service portal.
+    """
+    try:
+        table_num = reservation.table.number if reservation.table else 'Unassigned'
+        ref = reservation.booking_reference or ''
+        title = f"Guest Arrived at Reception! (Table {table_num})"
+        message = f"{reservation.guest_name} (Party of {reservation.guests_count}) has arrived for their {reservation.time_slot} booking at Table {table_num}."
+
+        notif = Notification.objects.create(
+            type=Notification.NotificationType.CUSTOMER_ARRIVED,
+            target_role='admin',
+            title=title,
+            message=message,
+            data={
+                'id': reservation.id,
+                'bookingReference': ref,
+                'guestName': reservation.guest_name,
+                'guestsCount': reservation.guests_count,
+                'tableNumber': table_num,
+                'timeSlot': reservation.time_slot,
+                'guestArrivedAt': reservation.guest_arrived_at.isoformat() if reservation.guest_arrived_at else timezone.now().isoformat(),
+            },
+            is_read=False,
+        )
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            event_data = {
+                'type': 'reservation.guest_arrived',
+                'reservation': {
+                    'id': reservation.id,
+                    'bookingReference': ref,
+                    'guestName': reservation.guest_name,
+                    'guestsCount': reservation.guests_count,
+                    'tableNumber': table_num,
+                    'timeSlot': reservation.time_slot,
+                    'guestArrivedAt': reservation.guest_arrived_at.isoformat() if reservation.guest_arrived_at else timezone.now().isoformat(),
+                    'status': reservation.status,
+                },
+                'notification': {
+                    'id': notif.id,
+                    'type': 'customer_arrived',
+                    'title': notif.title,
+                    'message': notif.message,
+                    'createdAt': notif.created_at.isoformat(),
+                },
+            }
+            async_to_sync(channel_layer.group_send)('admin_operations', event_data)
+            logger.info("Broadcasted reservation.guest_arrived for #%s to admin_operations", ref)
+    except Exception as e:
+        logger.exception("Error broadcasting reservation.guest_arrived: %s", e)
+
+
+def broadcast_reservation_status_changed(reservation, old_status, new_status):
+    """
+    Broadcasts reservation status update (e.g. seated, cancelled, no-show)
+    so hostesses and floor managers have real-time floor synchronization.
+    """
+    try:
+        table_num = reservation.table.number if reservation.table else 'Unassigned'
+        ref = reservation.booking_reference or ''
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            event_data = {
+                'type': 'reservation.status_updated',
+                'reservation': {
+                    'id': reservation.id,
+                    'bookingReference': ref,
+                    'tableNumber': table_num,
+                    'oldStatus': old_status,
+                    'newStatus': new_status,
+                    'status': new_status,
+                },
+            }
+            async_to_sync(channel_layer.group_send)('admin_operations', event_data)
+            logger.info("Broadcasted reservation.status_updated to %s for #%s", new_status, ref)
+    except Exception as e:
+        logger.exception("Error broadcasting reservation status update: %s", e)
