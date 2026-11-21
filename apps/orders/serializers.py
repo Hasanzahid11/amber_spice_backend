@@ -86,7 +86,15 @@ class OrderSerializer(serializers.ModelSerializer):
     pickupRack = serializers.CharField(source='pickup_rack', read_only=True)
     customerArrivedAt = serializers.DateTimeField(source='customer_arrived_at', read_only=True)
     pickedUpAt = serializers.DateTimeField(source='picked_up_at', read_only=True)
+    paymentCollectedAt = serializers.DateTimeField(source='payment_collected_at', read_only=True)
+    paymentCollectedByName = serializers.SerializerMethodField()
+    counterNotes = serializers.CharField(source='counter_notes', read_only=True)
     events = OrderEventSerializer(many=True, read_only=True)
+
+    def get_paymentCollectedByName(self, obj) -> str:
+        if obj.payment_collected_by:
+            return obj.payment_collected_by.get_full_name() or obj.payment_collected_by.username
+        return ''
 
     class Meta:
         model = Order
@@ -103,6 +111,9 @@ class OrderSerializer(serializers.ModelSerializer):
             'pickupRack',
             'customerArrivedAt',
             'pickedUpAt',
+            'paymentCollectedAt',
+            'paymentCollectedByName',
+            'counterNotes',
             'status',
             'paymentStatus',
             'paymentMethod',

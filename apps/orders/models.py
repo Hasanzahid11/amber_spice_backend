@@ -88,6 +88,15 @@ class Order(models.Model):
     pickup_rack = models.CharField(max_length=64, blank=True, default='')
     customer_arrived_at = models.DateTimeField(null=True, blank=True)
     picked_up_at = models.DateTimeField(null=True, blank=True)
+    payment_collected_at = models.DateTimeField(null=True, blank=True)
+    payment_collected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='collected_payments'
+    )
+    counter_notes = models.CharField(max_length=255, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

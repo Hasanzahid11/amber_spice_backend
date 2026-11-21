@@ -176,8 +176,12 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
         })
 
     @extend_schema(
+        request=inline_serializer('CompleteTakeawayRequest', fields={
+            'paymentMethod': serializers.ChoiceField(choices=['cash', 'card'], required=False),
+            'counterNotes': serializers.CharField(max_length=255, required=False),
+        }),
         responses=OrderSerializer,
-        description='JWT with orders:update_status or kitchen:update_status. Fast counter completion for ready takeaway orders. Verifies handover, marks delivered, and completes payment if cash.'
+        description='JWT with orders:update_status or kitchen:update_status. Fast counter completion for ready takeaway orders. Verifies handover, settles payment, marks delivered, and records audit trail.'
     )
     @action(detail=True, methods=['post'], url_path='complete-takeaway')
     @transaction.atomic
@@ -196,9 +200,21 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
         order.picked_up_at = now
         update_fields = ['status', 'picked_up_at', 'updated_at']
 
+        chosen_method = request.data.get('paymentMethod') or request.data.get('payment_method')
+        if chosen_method in ['cash', 'card']:
+            order.payment_method = chosen_method
+            update_fields.append('payment_method')
+
+        counter_notes = str(request.data.get('counterNotes') or request.data.get('counter_notes') or '').strip()
+        if counter_notes:
+            order.counter_notes = counter_notes
+            update_fields.append('counter_notes')
+
         if order.payment_status != Order.PaymentStatus.PAID:
             order.payment_status = Order.PaymentStatus.PAID
-            update_fields.append('payment_status')
+            order.payment_collected_at = now
+            order.payment_collected_by = user
+            update_fields.extend(['payment_status', 'payment_collected_at', 'payment_collected_by'])
 
         order.save(update_fields=update_fields)
         OrderEvent.objects.create(order=order, status=Order.Status.DELIVERED)
