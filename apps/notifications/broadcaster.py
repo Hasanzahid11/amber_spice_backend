@@ -366,3 +366,42 @@ def broadcast_reservation_status_changed(reservation, old_status, new_status):
             logger.info("Broadcasted reservation.status_updated to %s for #%s", new_status, ref)
     except Exception as e:
         logger.exception("Error broadcasting reservation status update: %s", e)
+
+
+def broadcast_review_created(review):
+    """
+    Broadcasts new customer review submission to admin & store management.
+    Alerts urgently on low ratings (1-2 stars) for immediate service recovery.
+    """
+    try:
+        from apps.notifications.models import Notification
+        is_low_rating = review.rating <= 2
+        notif_type = 'stock_alert' if is_low_rating else 'general'
+        title = f"⚠️ Low Rating Alert: {review.rating}★ from {review.name}" if is_low_rating else f"⭐ New Review: {review.rating}★ from {review.name}"
+        msg = f"Dish: {review.dish or 'Dining experience'}. {review.comment[:100]}"
+        
+        Notification.objects.create(
+            type=notif_type,
+            title=title,
+            message=msg,
+            target_role='manager',
+            data={'reviewId': review.id, 'rating': review.rating, 'dish': review.dish, 'isApproved': review.is_approved}
+        )
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            event_data = {
+                'type': 'notification.created',
+                'notification': {
+                    'type': notif_type,
+                    'title': title,
+                    'message': msg,
+                    'targetRole': 'manager',
+                    'reviewId': review.id,
+                    'rating': review.rating,
+                }
+            }
+            async_to_sync(channel_layer.group_send)('admin_operations', event_data)
+            logger.info("Broadcasted review notification for review #%s", review.id)
+    except Exception as e:
+        logger.exception("Error broadcasting review notification: %s", e)

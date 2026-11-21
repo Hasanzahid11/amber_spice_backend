@@ -75,11 +75,27 @@ class ReviewSerializer(serializers.ModelSerializer):
     helpfulCount = serializers.SerializerMethodField()
     verified = serializers.SerializerMethodField()
     date = serializers.DateTimeField(source='created_at', read_only=True)
+    adminReply = serializers.CharField(source='admin_reply', read_only=True)
+    repliedAt = serializers.DateTimeField(source='replied_at', read_only=True)
 
     class Meta:
         model = Review
-        fields = ['id', 'order', 'name', 'location', 'rating', 'dish', 'comment', 'helpfulCount', 'verified', 'date', 'is_approved']
-        read_only_fields = ['name', 'is_approved']
+        fields = [
+            'id',
+            'order',
+            'name',
+            'location',
+            'rating',
+            'dish',
+            'comment',
+            'helpfulCount',
+            'verified',
+            'date',
+            'is_approved',
+            'adminReply',
+            'repliedAt',
+        ]
+        read_only_fields = ['name', 'is_approved', 'adminReply', 'repliedAt']
 
     def get_helpfulCount(self, obj) -> int:
         return obj.helpful_votes.count()
@@ -94,9 +110,17 @@ class ReviewSerializer(serializers.ModelSerializer):
 
 
 class ReviewModerationSerializer(serializers.ModelSerializer):
+    adminReply = serializers.CharField(source='admin_reply', required=False, allow_blank=True)
+
     class Meta:
         model = Review
-        fields = ['is_approved']
+        fields = ['is_approved', 'admin_reply', 'adminReply']
+
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+        if 'admin_reply' in validated_data and validated_data['admin_reply'] != instance.admin_reply:
+            validated_data['replied_at'] = timezone.now() if validated_data['admin_reply'].strip() else None
+        return super().update(instance, validated_data)
 
 
 class ContactMessageSerializer(serializers.ModelSerializer):

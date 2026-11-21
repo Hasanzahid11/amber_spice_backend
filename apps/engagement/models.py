@@ -71,6 +71,8 @@ class Review(models.Model):
     dish = models.CharField(max_length=200, blank=True)
     comment = models.TextField()
     is_approved = models.BooleanField(default=False)
+    admin_reply = models.TextField(blank=True)
+    replied_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
