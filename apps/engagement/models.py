@@ -14,6 +14,7 @@ class Promotion(models.Model):
     usage_count = models.PositiveIntegerField(default=0, editable=False)
     is_active = models.BooleanField(default=True)
     first_order_only = models.BooleanField(default=False)
+    image = models.ImageField(upload_to='promotions/', blank=True, null=True)
     image_url = models.URLField(max_length=500, blank=True)
     badge = models.CharField(max_length=50, blank=True)
 

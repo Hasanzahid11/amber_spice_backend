@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import serializers
 from drf_spectacular.utils import inline_serializer
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from apps.accounts.permissions import HasRestaurantPermission
 from .models import Promotion, Faq, GalleryItem, Review, HelpfulVote, ContactMessage, NewsletterSubscriber, RestaurantProfile, BannerSlide
 from .serializers import (PromotionSerializer, FaqSerializer, GalleryItemSerializer, ReviewSerializer,
@@ -49,6 +50,7 @@ class PromotionViewSet(PublicContentViewSet):
     queryset = Promotion.objects.all()
     serializer_class = PromotionSerializer
     search_fields = ['code', 'title']
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         queryset = super().get_queryset()

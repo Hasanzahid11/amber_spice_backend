@@ -35,11 +35,27 @@ class PromotionSerializer(serializers.ModelSerializer):
     usageCount = serializers.IntegerField(source='usage_count', read_only=True)
     isActive = serializers.BooleanField(source='is_active', default=True)
     firstOrderOnly = serializers.BooleanField(source='first_order_only', default=False)
-    imageUrl = serializers.URLField(source='image_url', required=False, allow_blank=True)
+    image = serializers.ImageField(required=False, allow_null=True, write_only=True)
+    imageUrl = serializers.CharField(source='image_url', required=False, allow_blank=True)
 
     class Meta:
         model = Promotion
-        fields = ['id', 'code', 'title', 'description', 'discountType', 'discountValue', 'minSpend', 'validUntil', 'usageLimit', 'usageCount', 'isActive', 'firstOrderOnly', 'imageUrl', 'badge']
+        fields = ['id', 'code', 'title', 'description', 'discountType', 'discountValue', 'minSpend', 'validUntil', 'usageLimit', 'usageCount', 'isActive', 'firstOrderOnly', 'image', 'imageUrl', 'badge']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.image:
+            try:
+                request = self.context.get('request')
+                if request:
+                    data['imageUrl'] = request.build_absolute_uri(instance.image.url)
+                else:
+                    data['imageUrl'] = f"https://spiceadmin.innovationark.co{instance.image.url}"
+            except Exception:
+                data['imageUrl'] = f"https://spiceadmin.innovationark.co{instance.image.url}"
+        else:
+            data['imageUrl'] = instance.image_url or ''
+        return data
 
     def validate_code(self, value):
         value = value.strip().upper()
