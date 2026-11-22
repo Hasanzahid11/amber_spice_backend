@@ -87,11 +87,12 @@ def apply_promotion(totals, code, user=None, lock=False):
     if not promotion or promotion.usage_count >= promotion.usage_limit:
         raise ValidationError({'coupon_code': 'This voucher is invalid, expired or fully redeemed.'})
     if totals['subtotal'] < promotion.min_spend:
-        raise ValidationError({'coupon_code': f'Minimum food spend is {promotion.min_spend}.'})
+        diff = money(promotion.min_spend - totals['subtotal'])
+        raise ValidationError({'coupon_code': f'Minimum food spend is €{promotion.min_spend:.2f}. Add €{diff:.2f} more to unlock this discount.'})
     if promotion.first_order_only:
         from .models import Order
         if not user or not user.is_authenticated:
-            raise ValidationError({'coupon_code': 'Sign in to use a first-order voucher.'})
+            raise ValidationError({'coupon_code': 'Sign in to use this first-order voucher.'})
         if lock:
             from django.contrib.auth import get_user_model
             get_user_model().objects.select_for_update().get(pk=user.pk)
