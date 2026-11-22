@@ -56,6 +56,13 @@ class PromotionViewSet(PublicContentViewSet):
             queryset = queryset.filter(valid_until__gte=timezone.localdate())
         return queryset
 
+    @action(detail=True, methods=['post'], url_path='toggle-status')
+    def toggle_status(self, request, pk=None):
+        promotion = self.get_object()
+        promotion.is_active = not promotion.is_active
+        promotion.save(update_fields=['is_active'])
+        return Response(self.get_serializer(promotion).data)
+
 
 DEFAULT_BANNER_SLIDES = [
     {

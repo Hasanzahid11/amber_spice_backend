@@ -128,9 +128,16 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         _, totals = price_items(serializer.validated_data['items'], serializer.validated_data['dining_type'])
-        totals, _ = apply_promotion(totals, serializer.validated_data.get('coupon_code'), request.user)
-        return Response({'subtotal': str(totals['subtotal']), 'tax': str(totals['tax']),
-                         'deliveryFee': str(totals['delivery_fee']), 'totalAmount': str(totals['total_amount']), 'discountAmount': str(totals['discount_amount'])})
+        totals, promotion = apply_promotion(totals, serializer.validated_data.get('coupon_code'), request.user)
+        return Response({
+            'subtotal': str(totals['subtotal']),
+            'tax': str(totals['tax']),
+            'deliveryFee': str(totals['delivery_fee']),
+            'totalAmount': str(totals['total_amount']),
+            'discountAmount': str(totals['discount_amount']),
+            'couponCode': promotion.code if promotion else '',
+            'promotionTitle': promotion.title if promotion else '',
+        })
 
     @extend_schema(responses=OrderSerializer, description='Public capability link: use the full unguessable order number returned by checkout. Keep it private. Numeric IDs and phone-number searches are not accepted.')
     @action(detail=False, methods=['get'], url_path=r'track/(?P<order_number>[\w\-]+)')
