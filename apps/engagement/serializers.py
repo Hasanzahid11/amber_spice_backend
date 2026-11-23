@@ -50,9 +50,9 @@ class PromotionSerializer(serializers.ModelSerializer):
                 if request:
                     data['imageUrl'] = request.build_absolute_uri(instance.image.url)
                 else:
-                    data['imageUrl'] = f"https://spiceadmin.innovationark.co{instance.image.url}"
+                    data['imageUrl'] = f"https://api.amberspice.ie{instance.image.url}"
             except Exception:
-                data['imageUrl'] = f"https://spiceadmin.innovationark.co{instance.image.url}"
+                data['imageUrl'] = f"https://api.amberspice.ie{instance.image.url}"
         else:
             data['imageUrl'] = instance.image_url or ''
         return data

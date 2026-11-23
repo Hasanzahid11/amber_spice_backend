@@ -221,6 +221,10 @@ CORS_ALLOW_CREDENTIALS = True
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = [*default_headers, 'x-order-contact-token']
 
+raw_csrf = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+if raw_csrf:
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in raw_csrf.split(',') if origin.strip()]
+
 # ==============================================================================
 # Password validation & Internationalization
 # ==============================================================================
