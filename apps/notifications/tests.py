@@ -98,3 +98,17 @@ class NotificationTests(TestCase):
         unread_res = self.client.get('/api/v1/notifications/?unread=true')
         self.assertEqual(unread_res.status_code, 200)
         self.assertEqual(len(unread_res.data['results']), 0)
+
+        # Test single mark as read
+        single_notif = Notification.objects.create(
+            type='order_created',
+            target_role='admin',
+            title='Test Alert 3',
+            message='Alert 3 message',
+            is_read=False,
+        )
+        single_res = self.client.patch(f'/api/v1/notifications/{single_notif.id}/read/')
+        self.assertEqual(single_res.status_code, 200)
+        self.assertTrue(single_res.data['isRead'])
+        single_notif.refresh_from_db()
+        self.assertTrue(single_notif.is_read)

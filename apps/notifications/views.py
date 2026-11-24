@@ -1,10 +1,17 @@
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, extend_schema_view
 
 from .models import Notification
 from .serializers import NotificationSerializer
+
+
+class NotificationPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 @extend_schema_view(
@@ -13,6 +20,7 @@ from .serializers import NotificationSerializer
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = NotificationPagination
 
     def get_queryset(self):
         user = self.request.user
@@ -34,7 +42,7 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         if unread_only and unread_only.lower() in ['true', '1']:
             queryset = queryset.filter(is_read=False)
 
-        return queryset[:50]  # return last 50 notifications
+        return queryset
 
     @action(detail=False, methods=['post'], url_path='mark-all-read')
     def mark_all_read(self, request):
@@ -42,7 +50,7 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         count = queryset.update(is_read=True)
         return Response({'message': f'Marked {count} notifications as read.', 'markedCount': count})
 
-    @action(detail=True, methods=['patch'], url_path='read')
+    @action(detail=True, methods=['patch', 'post'], url_path='read')
     def read(self, request, pk=None):
         notification = self.get_object()
         notification.is_read = True
