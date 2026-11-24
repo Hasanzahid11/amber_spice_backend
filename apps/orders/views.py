@@ -328,6 +328,20 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
         order.status = new_status
         order.save(update_fields=update_fields)
         OrderEvent.objects.create(order=order, status=new_status)
+
+        # Inventory Auto-Depletion & Cancellation Restoration
+        if new_status == 'cancelled':
+            try:
+                from apps.inventory.services import restore_order_inventory
+                restore_order_inventory(order, user=user)
+            except Exception as inv_err:
+                logger.warning('Failed to restore inventory for cancelled order %s: %s', order.id, inv_err)
+        elif new_status in ['pending', 'preparing']:
+            try:
+                from apps.inventory.services import deplete_order_inventory
+                deplete_order_inventory(order, user=user)
+            except Exception as inv_err:
+                logger.warning('Failed to deplete inventory for order %s: %s', order.id, inv_err)
         try:
             from apps.notifications.broadcaster import broadcast_order_status_updated, broadcast_kitchen_ticket
             actor_name = user.get_full_name() or user.username

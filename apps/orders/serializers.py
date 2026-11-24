@@ -297,6 +297,11 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             OrderItem.objects.create(order=order, **item_data)
             Dish.objects.filter(pk=item_data['dish'].pk).update(orders_count=F('orders_count') + item_data['quantity'])
         OrderEvent.objects.create(order=order, status=order.status)
+        try:
+            from apps.inventory.services import deplete_order_inventory
+            deplete_order_inventory(order, user=customer)
+        except Exception:
+            pass
         return order
 
 

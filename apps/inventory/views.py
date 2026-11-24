@@ -1,16 +1,27 @@
 from decimal import Decimal
-from django.db.models import F
+from django.db.models import F, Sum
 from django.db import transaction
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, mixins
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.accounts.permissions import CanManageInventory, IsRestaurantStaff
-from .models import InventoryCategory, InventoryItem, StockAlert, WastageRecord
-from .serializers import InventoryCategorySerializer, InventoryItemSerializer, StockAlertSerializer, WastageSerializer
-from apps.accounts.permissions import HasRestaurantPermission
+from apps.accounts.permissions import CanManageInventory, IsRestaurantStaff, HasRestaurantPermission
+from apps.menu.models import Dish
+from .models import InventoryCategory, InventoryItem, StockAlert, WastageRecord, DishRecipe, StockTransaction
+from .serializers import (
+    InventoryCategorySerializer,
+    InventoryItemSerializer,
+    StockAlertSerializer,
+    WastageSerializer,
+    DishRecipeSerializer,
+    DishCostSummarySerializer,
+    StockTransactionSerializer,
+    ManualStockAdjustmentSerializer,
+)
+from .services import calculate_dish_cost_data
 
 
 class InventoryCategoryViewSet(viewsets.ModelViewSet):
@@ -62,6 +73,20 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
 
         item.current_stock += amount
         item.save()
+
+        # Audit stock transaction
+        unit_cost = item.cost_per_unit or Decimal('0.0000')
+        StockTransaction.objects.create(
+            item=item,
+            transaction_type=StockTransaction.TransactionType.PURCHASE,
+            quantity_delta=amount,
+            unit_cost=unit_cost,
+            total_cost=(amount * unit_cost).quantize(Decimal('0.01')),
+            balance_after=item.current_stock,
+            created_by=request.user if request.user.is_authenticated else None,
+            notes='Restocked via admin inventory',
+        )
+
         return Response(self.get_serializer(item).data)
 
 
@@ -127,4 +152,130 @@ class WastageViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Ge
             raise serializers.ValidationError({'quantity': 'Wastage exceeds current stock.'})
         item.current_stock -= quantity
         item.save(update_fields=['current_stock', 'last_restocked'])
-        serializer.save(reported_by=self.request.user)
+        wastage = serializer.save(reported_by=self.request.user)
+
+        # Audit stock transaction
+        unit_cost = item.cost_per_unit or Decimal('0.0000')
+        StockTransaction.objects.create(
+            item=item,
+            transaction_type=StockTransaction.TransactionType.WASTAGE,
+            quantity_delta=-quantity,
+            unit_cost=unit_cost,
+            total_cost=(quantity * unit_cost).quantize(Decimal('0.01')),
+            balance_after=item.current_stock,
+            created_by=self.request.user if self.request.user.is_authenticated else None,
+            notes=f"Wastage: {serializer.validated_data.get('reason', '')}",
+        )
+
+
+class DishRecipeViewSet(viewsets.ModelViewSet):
+    queryset = DishRecipe.objects.select_related('dish', 'ingredient', 'dish__category').all()
+    serializer_class = DishRecipeSerializer
+    filterset_fields = ['dish', 'ingredient']
+    search_fields = ['dish__name', 'ingredient__name']
+    ordering_fields = ['dish__name', 'created_at']
+    ordering = ['dish__name', 'ingredient__name']
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'cost_summary']:
+            return [IsRestaurantStaff()]
+        return [CanManageInventory()]
+
+    @action(detail=False, methods=['get'], url_path='cost-summary')
+    def cost_summary(self, request):
+        dish_id = request.query_params.get('dish') or request.query_params.get('dish_id')
+        dishes_qs = Dish.objects.select_related('category').prefetch_related('recipe_items__ingredient').all()
+        if dish_id:
+            dishes_qs = dishes_qs.filter(pk=dish_id)
+
+        summaries = []
+        for dish in dishes_qs:
+            data = calculate_dish_cost_data(dish)
+            summaries.append({
+                'dishId': dish.id,
+                'dishName': dish.name,
+                'dishCategory': dish.category.name if dish.category else '',
+                'dishPrice': dish.price,
+                'isAvailable': dish.is_available,
+                'recipeItems': DishRecipeSerializer(data['recipe_items'], many=True).data,
+                'totalFoodCost': data['total_food_cost'],
+                'foodCostPercent': data['food_cost_percent'],
+                'grossProfit': data['gross_profit'],
+                'grossMarginPercent': data['gross_margin_percent'],
+                'maxPortionsAvailable': data['max_portions_available'],
+            })
+        return Response(summaries)
+
+
+class StockTransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    queryset = StockTransaction.objects.select_related('item', 'order', 'created_by').all()
+    serializer_class = StockTransactionSerializer
+    filterset_fields = ['item', 'transaction_type', 'order']
+    search_fields = ['item__name', 'order__order_number', 'notes']
+    ordering_fields = ['created_at', 'quantity_delta', 'total_cost']
+    ordering = ['-created_at']
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'summary']:
+            return [IsRestaurantStaff()]
+        return [CanManageInventory()]
+
+    @action(detail=False, methods=['post'], url_path='adjust')
+    @transaction.atomic
+    def adjust(self, request):
+        serializer = ManualStockAdjustmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        item = serializer.validated_data['item']
+        item = InventoryItem.objects.select_for_update().get(pk=item.pk)
+        ttype = serializer.validated_data['transactionType']
+        delta = serializer.validated_data['quantityDelta']
+        custom_unit_cost = serializer.validated_data.get('unitCost')
+        unit_cost = custom_unit_cost if custom_unit_cost is not None else (item.cost_per_unit or Decimal('0.0000'))
+        notes = serializer.validated_data.get('notes', '')
+
+        new_stock = max(Decimal('0.00'), item.current_stock + delta)
+        item.current_stock = new_stock
+        if custom_unit_cost is not None and custom_unit_cost > Decimal('0'):
+            item.cost_per_unit = custom_unit_cost
+        item.save(update_fields=['current_stock', 'cost_per_unit', 'last_restocked'])
+
+        tx = StockTransaction.objects.create(
+            item=item,
+            transaction_type=ttype,
+            quantity_delta=delta,
+            unit_cost=unit_cost,
+            total_cost=(abs(delta) * unit_cost).quantize(Decimal('0.01')),
+            balance_after=new_stock,
+            created_by=request.user if request.user.is_authenticated else None,
+            notes=notes or f"Manual adjustment ({ttype})",
+        )
+        return Response(StockTransactionSerializer(tx).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        total_valuation = sum(
+            (item.current_stock * (item.cost_per_unit or Decimal('0.0000')))
+            for item in InventoryItem.objects.all()
+        ).quantize(Decimal('0.01'))
+
+        now = timezone.now()
+        thirty_days_ago = now - timezone.timedelta(days=30)
+        
+        consumption_30d = StockTransaction.objects.filter(
+            transaction_type=StockTransaction.TransactionType.CONSUMPTION,
+            created_at__gte=thirty_days_ago
+        ).aggregate(total=Sum('total_cost'))['total'] or Decimal('0.00')
+
+        wastage_30d = StockTransaction.objects.filter(
+            transaction_type=StockTransaction.TransactionType.WASTAGE,
+            created_at__gte=thirty_days_ago
+        ).aggregate(total=Sum('total_cost'))['total'] or Decimal('0.00')
+
+        return Response({
+            'totalInventoryValuation': total_valuation,
+            'totalConsumption30Days': consumption_30d,
+            'totalWastage30Days': wastage_30d,
+            'totalItemsCount': InventoryItem.objects.count(),
+            'lowStockCount': InventoryItem.objects.filter(current_stock__lte=F('minimum_stock')).count(),
+        })
+
