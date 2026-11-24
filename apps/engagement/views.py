@@ -1,13 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import serializers
-from drf_spectacular.utils import inline_serializer
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from apps.accounts.permissions import HasRestaurantPermission
 from .models import Promotion, Faq, GalleryItem, Review, HelpfulVote, ContactMessage, NewsletterSubscriber, RestaurantProfile, BannerSlide
@@ -239,17 +238,41 @@ class ReviewViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
         return Response(ReviewSerializer(review).data)
 
 
+@extend_schema_view(
+    create=extend_schema(description='Public endpoint for website visitors to submit a contact inquiry.'),
+    list=extend_schema(description='Staff endpoint to list and filter website contact inquiries by status or search keyword.'),
+    retrieve=extend_schema(description='Staff endpoint to view details of a contact message.'),
+    partial_update=extend_schema(description='Staff endpoint to update inquiry status (e.g. new -> read -> resolved).'),
+    destroy=extend_schema(description='Staff endpoint to remove spam or archived inquiries.'),
+)
 class ContactMessageViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin,
-                          mixins.UpdateModelMixin, viewsets.GenericViewSet):
-    queryset = ContactMessage.objects.all()
+                            mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    queryset = ContactMessage.objects.all().order_by('-created_at')
     serializer_class = ContactMessageSerializer
     filterset_fields = ['status']
+    search_fields = ['full_name', 'email', 'subject', 'message']
 
     def get_serializer_class(self):
         return ContactStatusSerializer if self.action in ['update', 'partial_update'] else ContactMessageSerializer
 
     def get_permissions(self):
         return [permissions.AllowAny()] if self.action == 'create' else [HasRestaurantPermission('customers:view')]
+
+    def perform_create(self, serializer):
+        msg = serializer.save()
+        try:
+            from apps.notifications.broadcaster import broadcast_contact_message_created
+            broadcast_contact_message_created(msg)
+        except Exception as e:
+            logger.warning("Could not dispatch contact message broadcast: %s", e)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = ContactStatusSerializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(ContactMessageSerializer(instance).data)
 
 
 class NewsletterViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

@@ -12,6 +12,7 @@ class Notification(models.Model):
         CUSTOMER_ARRIVED = 'customer_arrived', 'Customer Arrived'
         RESERVATION_CREATED = 'reservation_created', 'New Table Reservation'
         RESERVATION_STATUS = 'reservation_status', 'Reservation Status Changed'
+        CONTACT_MESSAGE = 'contact_message', 'Customer Contact Inquiry'
         SYSTEM = 'system', 'System Notice'
 
     user = models.ForeignKey(

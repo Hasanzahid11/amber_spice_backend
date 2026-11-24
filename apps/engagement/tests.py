@@ -110,3 +110,78 @@ class BannerSlideTests(APITestCase):
         delete_res = self.client.delete(f'/api/v1/content/banners/{new_id}/')
         self.assertEqual(delete_res.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(BannerSlide.objects.filter(id=new_id).exists())
+
+
+class ContactMessageTests(APITestCase):
+    def setUp(self):
+        RolePermissionConfig.objects.create(
+            role='manager',
+            permissions=['customers:view', 'settings:manage']
+        )
+        self.admin = User.objects.create_user(
+            username='admin_contact',
+            email='admin_contact@example.com',
+            password='password123',
+            role='admin',
+            is_staff=True,
+        )
+        self.customer = User.objects.create_user(
+            username='customer_contact',
+            email='customer_contact@example.com',
+            password='password123',
+            role='customer',
+        )
+
+    def test_public_can_submit_contact_message_and_notification_created(self):
+        from apps.notifications.models import Notification
+        from .models import ContactMessage
+        payload = {
+            'fullName': 'Siobhan Kelly',
+            'email': 'siobhan@example.ie',
+            'subject': 'Private Dining Inquiry',
+            'message': 'We would like to book a private event for 25 people next Friday.',
+        }
+        res = self.client.post('/api/v1/contact/messages/', payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data['fullName'], 'Siobhan Kelly')
+        self.assertEqual(res.data['status'], 'new')
+
+        # Verify DB record
+        msg = ContactMessage.objects.filter(email='siobhan@example.ie').first()
+        self.assertIsNotNone(msg)
+        self.assertEqual(msg.full_name, 'Siobhan Kelly')
+
+        # Verify operational Notification created for admin
+        notif = Notification.objects.filter(type='contact_message').first()
+        self.assertIsNotNone(notif)
+        self.assertIn('Private Dining Inquiry', notif.title)
+        self.assertIn('Siobhan Kelly', notif.message)
+        self.assertEqual(notif.data['email'], 'siobhan@example.ie')
+
+    def test_staff_can_list_and_update_contact_message_status(self):
+        from .models import ContactMessage
+        msg = ContactMessage.objects.create(
+            full_name='Liam Neeson',
+            email='liam@example.ie',
+            subject='Table question',
+            message='Is outdoor patio open?',
+            status='new',
+        )
+
+        # Unauthenticated cannot list
+        res_anon = self.client.get('/api/v1/contact/messages/')
+        self.assertEqual(res_anon.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # Admin can list
+        self.client.force_authenticate(user=self.admin)
+        res_admin = self.client.get('/api/v1/contact/messages/')
+        self.assertEqual(res_admin.status_code, status.HTTP_200_OK)
+        results = res_admin.data.get('results', res_admin.data)
+        self.assertTrue(any(m['email'] == 'liam@example.ie' for m in results))
+
+        # Admin can update status to read then resolved
+        patch_res = self.client.patch(f'/api/v1/contact/messages/{msg.id}/', {'status': 'resolved'}, format='json')
+        self.assertEqual(patch_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_res.data['status'], 'resolved')
+        msg.refresh_from_db()
+        self.assertEqual(msg.status, 'resolved')

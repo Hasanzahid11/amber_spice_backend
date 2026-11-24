@@ -141,12 +141,17 @@ class ReviewModerationSerializer(serializers.ModelSerializer):
 
 class ContactMessageSerializer(serializers.ModelSerializer):
     fullName = serializers.CharField(source='full_name', max_length=150)
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
     message = serializers.CharField(max_length=10000)
 
     class Meta:
         model = ContactMessage
-        fields = ['id', 'fullName', 'email', 'subject', 'message', 'status', 'created_at']
-        read_only_fields = ['status', 'created_at']
+        fields = ['id', 'fullName', 'email', 'subject', 'message', 'status', 'createdAt', 'created_at']
+        read_only_fields = ['createdAt', 'created_at']
+
+    def create(self, validated_data):
+        validated_data['status'] = 'new'
+        return super().create(validated_data)
 
 
 class ContactStatusSerializer(serializers.ModelSerializer):

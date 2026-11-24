@@ -405,3 +405,56 @@ def broadcast_review_created(review):
             logger.info("Broadcasted review notification for review #%s", review.id)
     except Exception as e:
         logger.exception("Error broadcasting review notification: %s", e)
+
+
+def broadcast_contact_message_created(contact_message):
+    """
+    Broadcasts new website contact inquiry to admin operations in real time.
+    Creates an operational Notification record and pushes via WebSocket to admin_operations.
+    """
+    try:
+        from apps.notifications.models import Notification
+        title = f"📩 New Inquiry: {contact_message.subject or 'General Inquiry'}"
+        msg = f"{contact_message.full_name} ({contact_message.email}): {contact_message.message[:140]}"
+        
+        notif = Notification.objects.create(
+            type=Notification.NotificationType.CONTACT_MESSAGE,
+            title=title,
+            message=msg,
+            target_role='admin',
+            data={
+                'inquiryId': contact_message.id,
+                'fullName': contact_message.full_name,
+                'email': contact_message.email,
+                'subject': contact_message.subject,
+                'message': contact_message.message,
+                'status': contact_message.status,
+                'createdAt': contact_message.created_at.isoformat(),
+            }
+        )
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            event_data = {
+                'type': 'contact.message_created',
+                'message': {
+                    'id': contact_message.id,
+                    'fullName': contact_message.full_name,
+                    'email': contact_message.email,
+                    'subject': contact_message.subject,
+                    'message': contact_message.message,
+                    'status': contact_message.status,
+                    'createdAt': contact_message.created_at.isoformat(),
+                },
+                'notification': {
+                    'id': notif.id,
+                    'type': notif.type,
+                    'title': notif.title,
+                    'message': notif.message,
+                    'createdAt': notif.created_at.isoformat(),
+                }
+            }
+            async_to_sync(channel_layer.group_send)('admin_operations', event_data)
+            logger.info("Broadcasted contact message #%s from %s to admin_operations", contact_message.id, contact_message.email)
+    except Exception as e:
+        logger.exception("Error broadcasting contact message notification: %s", e)

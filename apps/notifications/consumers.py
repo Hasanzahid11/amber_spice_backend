@@ -92,6 +92,39 @@ class OperationsConsumer(AsyncJsonWebsocketConsumer):
             'notification': event.get('notification'),
         })
 
+    async def contact_message_created(self, event):
+        await self.send_json({
+            'type': 'contact.message_created',
+            'message': event.get('message'),
+            'notification': event.get('notification'),
+        })
+
+    async def reservation_created(self, event):
+        await self.send_json({
+            'type': 'reservation.created',
+            'reservation': event.get('reservation'),
+            'notification': event.get('notification'),
+        })
+
+    async def reservation_guest_arrived(self, event):
+        await self.send_json({
+            'type': 'reservation.guest_arrived',
+            'reservation': event.get('reservation'),
+            'notification': event.get('notification'),
+        })
+
+    async def reservation_status_updated(self, event):
+        await self.send_json({
+            'type': 'reservation.status_updated',
+            'reservation': event.get('reservation'),
+        })
+
+    async def notification_created(self, event):
+        await self.send_json({
+            'type': 'notification.created',
+            'notification': event.get('notification'),
+        })
+
 
 class KitchenConsumer(AsyncJsonWebsocketConsumer):
     """
@@ -153,5 +186,38 @@ class KitchenConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             'type': 'customer.arrived',
             'order': event['order'],
+            'notification': event.get('notification'),
+        })
+
+    async def contact_message_created(self, event):
+        await self.send_json({
+            'type': 'contact.message_created',
+            'message': event.get('message'),
+            'notification': event.get('notification'),
+        })
+
+    async def reservation_created(self, event):
+        await self.send_json({
+            'type': 'reservation.created',
+            'reservation': event.get('reservation'),
+            'notification': event.get('notification'),
+        })
+
+    async def reservation_guest_arrived(self, event):
+        await self.send_json({
+            'type': 'reservation.guest_arrived',
+            'reservation': event.get('reservation'),
+            'notification': event.get('notification'),
+        })
+
+    async def reservation_status_updated(self, event):
+        await self.send_json({
+            'type': 'reservation.status_updated',
+            'reservation': event.get('reservation'),
+        })
+
+    async def notification_created(self, event):
+        await self.send_json({
+            'type': 'notification.created',
             'notification': event.get('notification'),
         })
