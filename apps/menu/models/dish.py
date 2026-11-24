@@ -49,6 +49,9 @@ class Dish(models.Model):
     is_special = models.BooleanField(default=False)
     prep_time = models.CharField(max_length=50, default='15-20 min')
     dietary = models.JSONField(default=list, blank=True)
+    allows_spice_level = models.BooleanField(default=True)
+    prep_preferences = models.JSONField(default=list, blank=True)
+    allergen_options = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, editable=False,
                                    on_delete=models.SET_NULL, related_name='created_menu_dishes')
     created_at = models.DateTimeField(auto_now_add=True)

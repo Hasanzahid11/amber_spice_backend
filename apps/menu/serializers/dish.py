@@ -5,13 +5,13 @@ from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from drf_spectacular.utils import extend_schema_field
 
-from ..models import Dish
+from ..models import Dish, DishExtraOption, DishPortionOption
 from .attribution import MenuCreatorSerializer, added_by
 from .images import MenuImageSerializer
 from .options import DishExtraOptionSerializer, DishPortionOptionSerializer
 
 
-class DietaryField(serializers.ListField):
+class StringListField(serializers.ListField):
     def get_value(self, dictionary):
         if hasattr(dictionary, 'getlist') and self.field_name in dictionary:
             values = dictionary.getlist(self.field_name)
@@ -25,7 +25,27 @@ class DietaryField(serializers.ListField):
             try:
                 data = json.loads(data)
             except ValueError:
+                raise serializers.ValidationError('Send list as a JSON array.')
+        return super().to_internal_value(data)
+
+
+class DietaryField(StringListField):
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except ValueError:
                 raise serializers.ValidationError('Send dietary as a JSON array of labels.')
+        return super().to_internal_value(data)
+
+
+class JsonNestedListField(serializers.ListField):
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except ValueError:
+                raise serializers.ValidationError('Send options as a JSON array.')
         return super().to_internal_value(data)
 
 
@@ -35,18 +55,75 @@ class DishSerializer(MenuImageSerializer):
     slug = serializers.SlugField(max_length=220, required=False, allow_blank=True,
                                  validators=[UniqueValidator(queryset=Dish.objects.all(), lookup='iexact')])
     price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
-    portionOptions = DishPortionOptionSerializer(source='portion_options', many=True, read_only=True)
-    extraOptions = DishExtraOptionSerializer(source='extra_options', many=True, read_only=True)
+    portionOptions = JsonNestedListField(
+        child=serializers.DictField(), required=False, write_only=True
+    )
+    extraOptions = JsonNestedListField(
+        child=serializers.DictField(), required=False, write_only=True
+    )
     isAvailable = serializers.BooleanField(source='is_available', required=False)
     isBestseller = serializers.BooleanField(source='is_bestseller', required=False)
     isPopular = serializers.BooleanField(source='is_popular', required=False)
     isSpecial = serializers.BooleanField(source='is_special', required=False)
     prepTime = serializers.CharField(source='prep_time', max_length=50, required=False, allow_blank=True)
     spicyLevel = serializers.IntegerField(source='spicy_level', min_value=0, max_value=3, required=False)
+    allowsSpiceLevel = serializers.BooleanField(source='allows_spice_level', required=False)
+    prepPreferences = StringListField(
+        source='prep_preferences', child=serializers.CharField(max_length=120), required=False
+    )
+    allergenOptions = StringListField(
+        source='allergen_options', child=serializers.CharField(max_length=120), required=False
+    )
     ordersCount = serializers.IntegerField(source='orders_count', read_only=True)
     dietary = DietaryField(child=serializers.ChoiceField(choices=[
         'halal', 'vegetarian', 'vegan', 'gluten-free', 'dairy-free',
     ]), required=False)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['portionOptions'] = DishPortionOptionSerializer(instance.portion_options.all(), many=True).data
+        data['extraOptions'] = DishExtraOptionSerializer(instance.extra_options.all(), many=True).data
+        return data
+
+    def _sync_options(self, dish, portions_data, extras_data):
+        if portions_data is not None:
+            dish.portion_options.all().delete()
+            for item in portions_data:
+                name = str(item.get('name', '')).strip()
+                if not name:
+                    continue
+                DishPortionOption.objects.create(
+                    dish=dish,
+                    name=name[:100],
+                    serving_info=str(item.get('servingInfo', '') or '')[:80],
+                    price_delta=Decimal(str(item.get('priceDelta', 0) or 0)),
+                    inventory_multiplier=Decimal(str(item.get('inventoryMultiplier', 1) or 1)),
+                )
+        if extras_data is not None:
+            dish.extra_options.all().delete()
+            for item in extras_data:
+                name = str(item.get('name', '')).strip()
+                if not name:
+                    continue
+                DishExtraOption.objects.create(
+                    dish=dish,
+                    name=name[:100],
+                    price=Decimal(str(item.get('price', 0) or 0)),
+                )
+
+    def create(self, validated_data):
+        portions_data = validated_data.pop('portionOptions', None)
+        extras_data = validated_data.pop('extraOptions', None)
+        dish = super().create(validated_data)
+        self._sync_options(dish, portions_data, extras_data)
+        return dish
+
+    def update(self, instance, validated_data):
+        portions_data = validated_data.pop('portionOptions', None)
+        extras_data = validated_data.pop('extraOptions', None)
+        dish = super().update(instance, validated_data)
+        self._sync_options(dish, portions_data, extras_data)
+        return dish
 
     @extend_schema_field(MenuCreatorSerializer(allow_null=True))
     def get_addedBy(self, instance):
@@ -64,7 +141,8 @@ class DishSerializer(MenuImageSerializer):
         model = Dish
         fields = [
             'id', 'category', 'category_name', 'name', 'slug', 'description', 'price',
-            'imageUrl', 'image', 'station', 'spicyLevel', 'rating', 'ordersCount',
+            'imageUrl', 'image', 'station', 'spicyLevel', 'allowsSpiceLevel',
+            'prepPreferences', 'allergenOptions', 'rating', 'ordersCount',
             'isAvailable', 'isBestseller', 'isPopular', 'isSpecial', 'prepTime',
             'dietary', 'portionOptions', 'extraOptions', 'created_at', 'addedBy',
         ]
