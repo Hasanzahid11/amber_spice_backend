@@ -17,11 +17,21 @@ class DeliverySummarySerializer(serializers.ModelSerializer):
     kitchenHandoverAt = serializers.DateTimeField(source='handed_over_at', allow_null=True)
     pickupVerifiedAt = serializers.DateTimeField(source='pickup_verified_at', allow_null=True)
     deliveryVerifiedAt = serializers.DateTimeField(source='delivery_verified_at', allow_null=True)
+    customerConfirmedReceipt = serializers.BooleanField(source='customer_confirmed_receipt')
+    customerConfirmedAt = serializers.DateTimeField(source='customer_confirmed_at', allow_null=True)
+    customerPaymentMarkedAt = serializers.DateTimeField(source='customer_payment_marked_at', allow_null=True)
+    customerPaymentMedium = serializers.CharField(source='customer_payment_medium')
     bagCount = serializers.IntegerField(source='bag_count')
 
     class Meta:
         model = DeliveryJob
-        fields = ['stage', 'acceptedAt', 'pickedUpAt', 'arrivedAt', 'deliveredAt', 'cashCollectedAt', 'returnRequestedAt', 'returnedAt', 'hasIssue', 'kitchenHandoverAt', 'pickupVerifiedAt', 'deliveryVerifiedAt', 'bagCount']
+        fields = [
+            'stage', 'acceptedAt', 'pickedUpAt', 'arrivedAt', 'deliveredAt',
+            'cashCollectedAt', 'returnRequestedAt', 'returnedAt', 'hasIssue',
+            'kitchenHandoverAt', 'pickupVerifiedAt', 'deliveryVerifiedAt',
+            'customerConfirmedReceipt', 'customerConfirmedAt',
+            'customerPaymentMarkedAt', 'customerPaymentMedium', 'bagCount',
+        ]
 
     def get_hasIssue(self, obj) -> bool:
         return bool(obj.issue_code)

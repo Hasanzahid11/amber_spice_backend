@@ -183,6 +183,38 @@ class OrderViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retrie
         })
 
     @extend_schema(
+        request=inline_serializer('CustomerConfirmDeliveryRequest', fields={
+            'received': serializers.BooleanField(),
+            'markPaid': serializers.BooleanField(required=False),
+            'paymentMedium': serializers.CharField(required=False, allow_blank=True),
+            'issueNote': serializers.CharField(required=False, allow_blank=True),
+        }),
+        responses=OrderSerializer,
+        description='Customer confirms food receipt at the door (Yes/No) and optionally submits payment medium.',
+    )
+    @action(detail=False, methods=['post'], url_path=r'track/(?P<order_number>[\w\-]+)/confirm-delivery')
+    @transaction.atomic
+    def track_confirm_delivery(self, request, order_number=None):
+        order = get_object_or_404(self.queryset.select_for_update(of=('self',)), order_number__iexact=order_number)
+        received = bool(request.data.get('received', True))
+        mark_paid = bool(request.data.get('markPaid', False))
+        payment_medium = str(request.data.get('paymentMedium') or '')
+        issue_note = str(request.data.get('issueNote') or '')
+        actor = request.user if request.user.is_authenticated else None
+
+        from .delivery_workflow import DeliveryWorkflow
+        DeliveryWorkflow.customer_confirm_delivery(
+            order,
+            received=received,
+            payment_medium=payment_medium,
+            mark_paid=mark_paid,
+            issue_note=issue_note,
+            actor=actor,
+        )
+        order.refresh_from_db()
+        return Response(OrderSerializer(order).data)
+
+    @extend_schema(
         request=inline_serializer('CompleteTakeawayRequest', fields={
             'paymentMethod': serializers.ChoiceField(choices=['cash', 'card'], required=False),
             'counterNotes': serializers.CharField(max_length=255, required=False),

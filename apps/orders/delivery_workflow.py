@@ -136,9 +136,56 @@ class DeliveryWorkflow:
         job.save()
 
     @classmethod
+    def customer_confirm_delivery(cls, order, received, payment_medium='', mark_paid=False, issue_note='', actor=None):
+        if order.dining_type != 'delivery':
+            raise ValidationError({'detail': 'Delivery confirmation is only for delivery orders.'})
+        if order.status == 'cancelled':
+            raise ValidationError({'detail': 'This order has been cancelled.'})
+        job = cls.job(order)
+        if job.stage not in ['picked_up', 'arrived', 'delivered']:
+            raise ValidationError({'detail': 'Your rider has not picked up this order yet.'})
+
+        now = timezone.now()
+        if not received:
+            note = (issue_note or '').strip() or 'Customer reported order not received or issue at delivery.'
+            job.issue_code = 'customer_not_received'
+            job.issue_note = note[:1000]
+            job.issue_reported_at = now
+            job.save()
+            cls.event(order, actor, 'issue_reported', f'customer_not_received: {job.issue_note}')
+            return job
+
+        if not job.customer_confirmed_receipt:
+            job.customer_confirmed_receipt = True
+            job.customer_confirmed_at = now
+            cls.event(order, actor, 'customer_confirmed_receipt', 'Customer confirmed food received.')
+
+        if mark_paid and order.payment_status != 'paid':
+            clean_medium = (payment_medium or order.payment_method or 'cash').strip()[:30]
+            job.customer_payment_medium = clean_medium
+            job.customer_payment_marked_at = now
+            cls.event(
+                order,
+                actor,
+                'customer_payment_submitted',
+                f'Customer marked payment via {clean_medium}. Awaiting rider approval.',
+                amount=order.total_amount,
+            )
+
+        job.save()
+        return job
+
+    @classmethod
     def record_cash(cls, order, user):
-        if order.payment_method != 'cash' or order.status != 'delivered' or order.payment_status == 'refunded':
+        if order.payment_status == 'refunded':
+            raise ValidationError({'detail': 'Cannot collect payment on a refunded order.'})
+        if order.dining_type == 'delivery':
+            job = cls.job(order)
+            if job.stage not in ['arrived', 'delivered'] and order.status != 'delivered':
+                raise ValidationError({'detail': 'Arrive at the delivery address or complete handover before approving payment.'})
+        elif order.status != 'delivered':
             raise ValidationError({'detail': 'Record cash only after delivery or collection handover.'})
+
         if order.payment_status == 'paid':
             return
         order.payment_status = 'paid'
@@ -147,7 +194,7 @@ class DeliveryWorkflow:
             job = cls.job(order)
             job.cash_collected_at = timezone.now()
             job.save()
-            cls.event(order, user, 'cash_collected', amount=order.total_amount)
+            cls.event(order, user, 'cash_collected', 'Rider approved payment received.', amount=order.total_amount)
 
     @classmethod
     def request_return(cls, order, user, note):
@@ -213,6 +260,8 @@ class DeliveryWorkflow:
                 actions.append('arrive')
             elif job.stage == 'arrived':
                 actions.append('complete')
+                if order.payment_status == 'pending':
+                    actions.append('collect-cash')
             elif job.stage == 'returning':
                 actions.append('confirm-return')
         return actions
