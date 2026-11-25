@@ -190,6 +190,8 @@ class CashCollectionSerializer(serializers.Serializer):
 class OrderCreateSerializer(serializers.ModelSerializer):
     items = OrderItemCreateSerializer(many=True, write_only=True, allow_empty=False, max_length=100)
     client_request_id = serializers.UUIDField(required=False)
+    delivery_latitude = serializers.FloatField(required=False, allow_null=True, write_only=True)
+    delivery_longitude = serializers.FloatField(required=False, allow_null=True, write_only=True)
 
     class Meta:
         model = Order
@@ -211,6 +213,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             'total_amount',
             'delivery_address',
             'delivery_postal_code',
+            'delivery_latitude',
+            'delivery_longitude',
             'notes',
             'pickup_rack',
             'estimated_time_minutes',
@@ -234,6 +238,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             'paymentMethod': 'payment_method',
             'deliveryAddress': 'delivery_address',
             'deliveryPostalCode': 'delivery_postal_code',
+            'deliveryLatitude': 'delivery_latitude',
+            'deliveryLongitude': 'delivery_longitude',
             'deliveryFee': 'delivery_fee',
             'totalAmount': 'total_amount',
             'estimatedTimeMinutes': 'estimated_time_minutes',
@@ -254,6 +260,21 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 postcode = attrs.get('delivery_postal_code', '').upper().replace(' ', '')
                 if not postcode.startswith(tuple(profile.delivery_postcode_prefixes)):
                     raise serializers.ValidationError({'delivery_postal_code': 'This address is outside the configured delivery area. Select collection or another address.'})
+            d_lat = attrs.pop('delivery_latitude', None)
+            d_lng = attrs.pop('delivery_longitude', None)
+            if d_lat is not None and d_lng is not None and profile and profile.latitude is not None and profile.longitude is not None:
+                import math
+                r_lat, r_lng = float(profile.latitude), float(profile.longitude)
+                dlat = math.radians(float(d_lat) - r_lat)
+                dlng = math.radians(float(d_lng) - r_lng)
+                a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(r_lat)) * math.cos(math.radians(float(d_lat))) * math.sin(dlng / 2) ** 2
+                distance_km = 6371.0 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+                max_radius = float(profile.delivery_radius_km or 8.0)
+                if distance_km > max_radius:
+                    raise serializers.ValidationError({'delivery_address': f'Your location is {distance_km:.1f} km away. We deliver within {max_radius:.0f} km of the restaurant. Please switch to Takeaway Collection.'})
+        else:
+            attrs.pop('delivery_latitude', None)
+            attrs.pop('delivery_longitude', None)
         if dining_type == 'dine-in' and not attrs.get('table_number'):
             raise serializers.ValidationError({'table_number': 'Select a table for dine-in.'})
         if dining_type == 'dine-in':

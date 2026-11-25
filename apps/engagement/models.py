@@ -32,6 +32,7 @@ class RestaurantProfile(models.Model):
     opening_hours = models.TextField(blank=True)
     latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     longitude = models.DecimalField(max_digits=11, decimal_places=7, null=True, blank=True)
+    delivery_radius_km = models.DecimalField(max_digits=5, decimal_places=2, default='8.00')
     delivery_postcode_prefixes = models.JSONField(default=list, blank=True)
     delivery_fee = models.DecimalField(max_digits=8, decimal_places=2, default=2)
     free_delivery_threshold = models.DecimalField(max_digits=10, decimal_places=2, default=30)

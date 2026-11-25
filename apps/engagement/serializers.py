@@ -17,13 +17,14 @@ class RestaurantProfileSerializer(serializers.ModelSerializer):
     delivery_postcode_prefixes = PostcodePrefixesField(required=False, allow_blank=True)
     latitude = serializers.DecimalField(max_digits=10, decimal_places=7, min_value=-90, max_value=90, allow_null=True, required=False)
     longitude = serializers.DecimalField(max_digits=11, decimal_places=7, min_value=-180, max_value=180, allow_null=True, required=False)
+    delivery_radius_km = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=Decimal('0.50'), max_value=Decimal('50.00'), required=False)
     delivery_fee = serializers.DecimalField(max_digits=8, decimal_places=2, min_value=0)
     free_delivery_threshold = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
     included_vat_percent = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100)
 
     class Meta:
         model = RestaurantProfile
-        fields = ['id', 'name', 'story', 'phone', 'email', 'address', 'city', 'opening_hours', 'latitude', 'longitude', 'delivery_postcode_prefixes', 'delivery_fee', 'free_delivery_threshold', 'included_vat_percent', 'ordering_enabled']
+        fields = ['id', 'name', 'story', 'phone', 'email', 'address', 'city', 'opening_hours', 'latitude', 'longitude', 'delivery_radius_km', 'delivery_postcode_prefixes', 'delivery_fee', 'free_delivery_threshold', 'included_vat_percent', 'ordering_enabled']
 
 
 class PromotionSerializer(serializers.ModelSerializer):
