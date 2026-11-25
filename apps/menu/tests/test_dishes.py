@@ -138,6 +138,26 @@ class DishAPITests(APITestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['dietary'], ['halal', 'dairy-free'])
 
+    def test_multipart_upload_accepts_json_portion_and_extra_options(self):
+        response = self.client.post(
+            self.url,
+            {
+                'name': 'Moutabal',
+                'category': self.category.pk,
+                'price': '8.50',
+                'image': uploaded_image(),
+                'dietary': '[]',
+                'portionOptions': '[]',
+                'extraOptions': '[{"name":"Extra Tandoori Naan","price":"3.50"}]',
+                'allowsSpiceLevel': 'false',
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['portionOptions'], [])
+        self.assertEqual(len(response.data['extraOptions']), 1)
+        self.assertFalse(response.data['allowsSpiceLevel'])
+
     def test_popular_and_category_cache_do_not_leak_creator_between_audiences(self):
         self.create(isPopular=True)
         for manager_first in [True, False]:

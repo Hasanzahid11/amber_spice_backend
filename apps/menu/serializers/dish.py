@@ -39,7 +39,7 @@ class DietaryField(StringListField):
         return super().to_internal_value(data)
 
 
-class JsonNestedListField(serializers.ListField):
+class JsonNestedListField(StringListField):
     def to_internal_value(self, data):
         if isinstance(data, str):
             try:
