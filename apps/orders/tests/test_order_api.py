@@ -121,3 +121,29 @@ class OrderAPITests(APITestCase):
         self.assertEqual(response.data['orderNumber'], 'ORD-TEST-12345')
         self.assertEqual(response.data['customerName'], 'Farhan')
         self.assertEqual(len(response.data['items']), 1)
+
+    def test_client_cannot_tamper_with_order_amount_or_item_price(self):
+        tampered_total_payload = {
+            'customer_name': 'Tamper Test',
+            'dining_type': 'takeaway',
+            'payment_method': 'cash',
+            'total_amount': '0.01',
+            'items': [{'dish_id': self.dish.id, 'quantity': 1, 'price': '0.01'}],
+        }
+        rejected = self.client.post(self.list_url, tampered_total_payload, format='json')
+        self.assertEqual(rejected.status_code, status.HTTP_400_BAD_REQUEST)
+
+        tampered_item_payload = {
+            'customer_name': 'Tamper Item',
+            'dining_type': 'takeaway',
+            'payment_method': 'cash',
+            'subtotal': '0.01',
+            'delivery_fee': '0.00',
+            'items': [{'dish_id': self.dish.id, 'quantity': 2, 'price': '0.01'}],
+        }
+        created = self.client.post(self.list_url, tampered_item_payload, format='json')
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        order = Order.objects.get(order_number=created.data['orderNumber'])
+        self.assertEqual(order.subtotal, Decimal('33.00'))
+        self.assertEqual(order.total_amount, Decimal('33.00'))
+        self.assertEqual(order.items.first().price, Decimal('16.50'))
